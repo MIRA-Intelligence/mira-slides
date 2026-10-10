@@ -2276,6 +2276,14 @@ jobs:
         # mergeSnapshot), and no prototype-shaped name reaches any object.
         run: node --no-warnings scripts/test-sync-inbound-docfields.ts
 
+      - name: Doc-level sync allowlist (field-class map)
+        # The other half of the never-synced set: when an app binds a class map,
+        # a peer emits only content-class doc keys and ignores non-content ones
+        # inbound, whatever the sender claims; an unknown key (a newer build's
+        # field) is applied but never re-emitted. With no map it is byte-for-byte
+        # the shipped denylist. skipDoc is the floor under both.
+        run: node scripts/test-sync-allowlist.ts
+
       - name: the spaces binding of the sync session
         # Only what bento/spaces answers DIFFERENTLY, because three of the five
         # host answers are not slides' answers and each one is invisible until
