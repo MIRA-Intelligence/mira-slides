@@ -10276,3 +10276,23 @@ each level: the library, the table, the CLI and the page's rendering. A
 first mutation run showed the library's own default was untested, because
 every caller passed the option, so a library-level row was added.
 
+
+## 2026-10-11 — Doc-level sync allowlist, and a residual for reclassified keys
+
+When a shape binds a field-class map, the sync engine (kernel/src/sync/crdt.ts)
+syncs doc-level keys by allowlist on top of the shipped `skipDoc` denylist: a
+peer emits only content-class keys and ignores non-content keys inbound, and an
+unknown key (one a newer build added) is applied but never re-emitted
+(`APPLY_UNKNOWN_DOC_KEYS = true` — option (a)). `skipDoc` is the floor under
+both directions and beats a content classification, verified by
+`scripts/test-sync-allowlist.ts` (a fixture classing skipDoc keys as content,
+with a red mutation per floor). With no map the engine is byte-identical to the
+shipped denylist, so this is dormant until an app opts in.
+
+RESIDUAL (security): because an unknown key is applied under option (a), a later
+build that newly PROTECTS a once-unknown field — reclassifies it from unknown to
+a non-content class — must treat that field's pre-existing value as UNTRUSTED. A
+peer could have planted it over the wire while the field was still unknown-and-
+applied. The new build stops syncing it, but the value already in the file is
+not evidence of anything; validate or discard it on adoption rather than trust
+it because it is "already there".

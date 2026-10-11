@@ -26,10 +26,13 @@
 // is dormant until an app opts in. That control is the last section.
 //
 // Mutations (edit kernel/src/sync/crdt.ts, re-run — each turns a row red):
-//   - outboundDocKey → `return true`           : sender emits non-content/unknown
-//   - ignoreInboundDocKey non-content → false  : receiver adopts identity/mode
-//   - APPLY_UNKNOWN_DOC_KEYS = false           : unknown key no longer applied
-//   - drop the skipDoc branch in either        : the floor rows red
+//   - outboundDocKey → `return true`              : sender emits non-content/unknown
+//   - ignoreInboundDocKey non-content → false     : receiver adopts identity/mode
+//   - APPLY_UNKNOWN_DOC_KEYS = false              : unknown key no longer applied
+//   - outboundDocKey, drop `skipDoc.has(k)` guard : OUTBOUND floor red (diff + outboundDoc)
+//   - ignoreInboundDocKey, drop `skipDoc.has(k)`  : INBOUND floor red (applySet + snapshot)
+// The last two matter because a bound map classes some skipDoc keys as content
+// (spaces does), so the skipDoc-first guard is the only thing holding them off.
 
 import { SyncEngine, shape } from '../slides/src/sync/crdt.ts'
 import type { DocShape } from '../slides/src/sync/crdt.ts'
@@ -48,8 +51,20 @@ const CLASSES: Record<string, FieldClass> = {
 }
 const CLASSED: DocShape = shape('pages', 'blocks', 'html', [], CLASSES)
 const PLAIN: DocShape = shape('pages', 'blocks') // the shipped denylist, no map
+// The floor fixture: a map that classes skipDoc keys as `content`. skipDoc must
+// win over the class in BOTH directions, or a map could re-open a never-synced
+// field. This is not hypothetical — spaces' real map classes policy / format /
+// version / modified as content, and the floor is what keeps them off the wire.
+const FLOOR_FIELDS: Record<string, FieldClass> = {
+  ...CLASSES,
+  collab: 'content', docId: 'content', policy: 'content', format: 'content',
+  version: 'content', modified: 'content', revisions: 'content', trail: 'content',
+  readonly: 'content', template: 'content',
+}
+const FLOORED: DocShape = shape('pages', 'blocks', 'html', [], FLOOR_FIELDS)
 class Classed extends SyncEngine { constructor(a: string) { super(a, CLASSED) } }
 class Plain extends SyncEngine { constructor(a: string) { super(a, PLAIN) } }
+class Floored extends SyncEngine { constructor(a: string) { super(a, FLOORED) } }
 
 type Rec = Record<string, unknown>
 const doc = (over: Rec = {}): Rec => ({
@@ -148,6 +163,43 @@ H('SNAPSHOT merge obeys the same receive rule')
   ok(d.mood === 'bright', 'snapshot: a content field lands')
   ok(d.owner !== 'eve', 'snapshot: an identity field is refused')
   ok(d.mystery === 'newer', 'snapshot: an unknown field is applied (option a)')
+}
+
+H('FLOOR: skipDoc beats a content classification, both directions')
+{
+  // Every one of these is classed `content` in FLOOR_FIELDS, yet skipDoc must
+  // still refuse it — on the wire and in the file.
+  const FLOORED_KEYS = ['collab', 'docId', 'policy', 'format', 'version', 'modified', 'revisions', 'trail', 'readonly', 'template']
+  // --- outbound: a diff emits none of them, though the map calls them content
+  const A = new Floored('alice'); const d = doc(); A.adopt(d as never)
+  const before = clone(d)
+  ;(d.collab as Rec).key = 'ROTATED'; d.docId = 'EVIL'; d.policy = 'evil'; d.format = 'evil'
+  d.version = 999; d.modified = '1999'; d.revisions = [{ id: 'x' }]; d.trail = [{}]; d.readonly = true; d.template = true
+  const emitted = docSets(A.diff(before, d as never, { text: true }) as never)
+  ok(FLOORED_KEYS.every(k => !emitted.includes(k)),
+    'a skipDoc key classed content is still never EMITTED by a diff')
+  // --- outbound: the snapshot projection drops them too
+  const proj = A.outboundDoc(clone(d)) as Rec
+  ok(FLOORED_KEYS.every(k => proj[k] === undefined) && proj.pages !== undefined,
+    'outboundDoc drops every skipDoc key, content-classed or not, and keeps the container')
+  // --- inbound: a hand-crafted op per key (no honest peer emits one) is refused
+  const B = new Floored('bob'); const bd = doc(); B.adopt(bd as never)
+  let act = 0
+  for (const k of FLOORED_KEYS) {
+    B.apply(bd as never, [{ op: 'set', k, v: k === 'collab' ? { key: 'EVIL' } : 'EVIL', a: `evil${act++}`, s: 1, l: 9000 }] as never)
+  }
+  ok((bd.collab as Rec).key === 'MINE' && bd.docId === 'd-mine' && bd.policy === undefined && bd.readonly === undefined,
+    'a skipDoc key classed content is still REFUSED on receive (applySet)')
+  // --- inbound: the same through a snapshot with a VALID state carrying forged regs
+  const C = new Floored('carol'); const cd = doc(); C.adopt(cd as never)
+  C.apply(cd as never, peerOps({ mood: 'bright' }) as never) // a real content reg, so the state is valid
+  const st = C.toJSON() as { regs: Rec }
+  const node = Object.keys(st.regs).find(k => k.endsWith(' mood'))!.split(' ')[0]
+  const rdoc = doc({ collab: { key: 'EVIL' }, docId: 'EVIL', policy: 'evil', readonly: true }) as Rec
+  for (const k of FLOORED_KEYS) st.regs[`${node} ${k}`] = [9000, 'evil']
+  C.mergeSnapshot(cd as never, rdoc as never, st as never)
+  ok((cd.collab as Rec).key === 'MINE' && cd.docId === 'd-mine' && cd.policy === undefined && cd.readonly === undefined,
+    'a skipDoc key classed content is still REFUSED on snapshot merge (mergeSnapshot)')
 }
 
 H('CONTROL: with no class map, the engine is the shipped denylist')
