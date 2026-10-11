@@ -43,7 +43,7 @@
  * this and nothing more: a container of parented nodes, each with an `id`,
  * under two keys named by the DocShape below. Every app's model satisfies it.
  */
-import type { FieldClass } from '../docfields.ts'
+import type { FieldClass, FieldsOfClass } from '../docfields.ts'
 
 type BentoDoc = object
 type Slide = { id: string }
@@ -149,6 +149,25 @@ export interface DocShape {
    * are never emitted and never applied in either mode.
    */
   readonly classes?: Readonly<Record<string, FieldClass>>
+  /**
+   * HISTORY-class doc keys that nonetheless SYNC, as whole-value registers. The
+   * allowlist decides sync by `classes`, but a field's copy class and its sync
+   * decision can diverge: bento/type classes `comments` as history so reader and
+   * export copies drop them (the #663 copy ruling), yet comments must still flow
+   * between live collaborators. Naming such a key here emits and accepts it
+   * though it is non-content — WITHOUT changing its wire shape, so a build that
+   * binds a class map stays mixed-version-compatible with one that does not
+   * (both see the same whole `#doc <key>` register).
+   *
+   * RESTRICTED to history-class keys, two ways: `shape()` throws at runtime if a
+   * named key is not classed 'history' (or there is no class map), and the typed
+   * `historySyncKeys` helper makes naming an identity / mode / capability /
+   * unclassified key a compile error. So this can never become a path around the
+   * floor: skipDoc is still checked FIRST in both gates, and an identity, mode or
+   * capability key can never be listed here at all. For per-key id-maps use
+   * `maps` instead (that one changes the wire shape).
+   */
+  readonly syncHistory: ReadonlySet<string>
 }
 
 /** Derived, never authored: the volatile set is the same for every app apart
@@ -159,6 +178,7 @@ export const shape = (
   text = 'html',
   maps: readonly string[] = [],
   classes?: Readonly<Record<string, FieldClass>>,
+  syncHistory: readonly string[] = [],
 ): DocShape => {
   // file-local, never synced — each replica keeps its own timeline. (When an app
   // passes `classes`, PR2 ALSO refuses any non-content / unknown doc key inbound
@@ -173,8 +193,30 @@ export const shape = (
   const skipDoc = new Set([parents, 'modified', 'collab', 'format', 'version', 'policy', 'revisions', 'trail', 'docId', 'readonly', 'template'])
   // `assets` and `blobs` are per-key for every app and always have been —
   // unioned rather than defaulted so an app naming its own map cannot drop them.
-  const out: DocShape = { parents, children, text, skipDoc, maps: new Set(['assets', 'blobs', ...maps]) }
+  // syncHistory may name ONLY history-class keys — the runtime half of the
+  // restriction (the typed helper is the compile half). A key not classed
+  // 'history', or named with no class map at all, is refused here so it can
+  // never widen what syncs beyond a history field an app chose to share.
+  for (const k of syncHistory) {
+    if (!classes || classes[k] !== 'history') {
+      throw new Error(`DocShape.syncHistory names "${k}", which is ${classes ? `classed ${classes[k] ?? 'nothing'}` : 'bound with no class map'}; only history-class keys may sync this way`)
+    }
+  }
+  const out: DocShape = { parents, children, text, skipDoc, maps: new Set(['assets', 'blobs', ...maps]), syncHistory: new Set(syncHistory) }
   return classes ? { ...out, classes } : out
+}
+
+/** Build the `syncHistory` list for `shape()` with a COMPILE-TIME guarantee
+ *  that every key is history-class in `classes`. `FieldsOfClass<M,'history'>` is
+ *  the union of M's history keys, so naming an identity / mode / capability or
+ *  unclassified key is a type error here — the compile half of the restriction
+ *  that `shape()` also enforces at runtime. Usage:
+ *    shape('body', null, 'text', ['footnotes'], TYPE_FIELDS,
+ *          historySyncKeys(TYPE_FIELDS, ['comments'])) */
+export function historySyncKeys<M extends Record<string, FieldClass>>(
+  _classes: M, keys: readonly FieldsOfClass<M, 'history'>[],
+): readonly string[] {
+  return keys as readonly string[]
 }
 
 /** The parent array of a document, and the child array of a parent. Indexed
@@ -601,8 +643,9 @@ export class SyncEngine {
    *  name) on any path it mints? Content-class keys and per-key maps only; never
    *  a skipDoc key, a known non-content key, or an UNKNOWN key. */
   outboundDocKey(k: string): boolean {
-    if (this.S.skipDoc.has(k)) return false
+    if (this.S.skipDoc.has(k)) return false // floor first — syncHistory can't reach it
     if (this.S.maps.has(k)) return true
+    if (this.S.syncHistory.has(k)) return true // a history key the app chose to share
     return !this.S.classes || this.S.classes[k] === 'content'
   }
 
@@ -615,8 +658,9 @@ export class SyncEngine {
    *  knows as non-content; for an unknown key, per APPLY_UNKNOWN_DOC_KEYS. With
    *  no class map this is exactly the shipped skipDoc refusal. */
   private ignoreInboundDocKey(k: string): boolean {
-    if (this.S.skipDoc.has(k)) return true
+    if (this.S.skipDoc.has(k)) return true // floor first — syncHistory can't reach it
     if (this.S.maps.has(k) || !this.S.classes) return false
+    if (this.S.syncHistory.has(k)) return false // a history key the app chose to share
     const c = this.S.classes[k]
     if (c === undefined) return !APPLY_UNKNOWN_DOC_KEYS
     return c !== 'content'
