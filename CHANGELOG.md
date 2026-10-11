@@ -11,18 +11,8 @@ pre-1.0.
 
 ## [Unreleased]
 
-- **Ghost Cut: move elements with ⇧⌘X (Ctrl+Shift+X).** The selection fades
-  where it stands instead of disappearing; paste moves it to the pointer — on
-  this slide or another — keeping it the same element, in one undoable step.
-  Escape puts it back. It is also copied, so pasting in another deck works as
-  after ⌘C. Plain ⌘X is unchanged. Thanks to senthan-07 (#679).
-- **An edit made while the deck is saving is no longer marked saved.** Saving
-  takes a moment, and an edit made in that moment — by you, or by someone in a
-  live session — used to be shown as saved while the file on disk was still
-  missing it. The unsaved-changes dot now goes out only when the file holds
-  exactly what is on screen; otherwise it stays on and the next save (or
-  auto-save) writes the edit. ⌘S, auto-save and "Update this file" also wait
-  for each other instead of writing the file at the same time.
+## [1.2.7] — 2026-10-11
+
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a
   `.pptx` to open it as a bento/slides deck, or drop a bento/slides deck (or
   its document JSON) to save it as PowerPoint. The page detects what you
@@ -33,7 +23,6 @@ pre-1.0.
   slides, the Save menu has both ways in: "Import PowerPoint…" opens the page
   ready for a .pptx, and "Export for PowerPoint…" opens it for this deck's
   saved file.
-
 - **Saving as PowerPoint keeps more of your deck.** Speaker notes, links,
   tables, charts, pictures and hidden slides come across, and now code
   blocks too (as editable text in Consolas, indentation kept) and embedded
@@ -50,7 +39,34 @@ pre-1.0.
   `--report r.json`). Export is a page, a library and a command-line tool
   rather than a button in the app, so every shared file stays small and the
   app stays focused.
-
+- **Security: update this file. This release closes further issues found in
+  our own review.** None needs anything from you beyond updating, except one
+  step if you share decks live: **open each shared deck after updating and use
+  Reset access once.** What each issue was is described here once people have
+  had time to update.
+- **An edit made while the deck is saving is no longer marked saved.** Saving
+  takes a moment, and an edit made in that moment — by you, or by someone in a
+  live session — used to be shown as saved while the file on disk was still
+  missing it. The unsaved-changes dot now goes out only when the file holds
+  exactly what is on screen; otherwise it stays on and the next save (or
+  auto-save) writes the edit. ⌘S, auto-save and "Update this file" also wait
+  for each other instead of writing the file at the same time.
+- **Turn text into code without leaving the text box.** Type a fenced block
+  — a line of three backticks (optionally with a language, like ```` ```js ````
+  or ```` ```python ````), your code, and a closing line of three backticks —
+  and when you finish editing it becomes a real Code element: highlighted,
+  with its language set, and able to morph between slides. If the box held
+  only the fence it turns into the Code element in place; text above or below
+  stays as text boxes stacked around it. Pasting fenced text works the same,
+  into a text box or straight onto the slide. Backticks inside the code are
+  kept as typed, and an unclosed fence stays plain text. You can also select
+  one or more lines and press `` ` `` to set them in code style; press it
+  again to undo that.
+- **Ghost Cut: move elements with ⇧⌘X (Ctrl+Shift+X).** The selection fades
+  where it stands instead of disappearing; paste moves it to the pointer — on
+  this slide or another — keeping it the same element, in one undoable step.
+  Escape puts it back. It is also copied, so pasting in another deck works as
+  after ⌘C. Plain ⌘X is unchanged. Thanks to senthan-07 (#679).
 - **Long speaker notes scroll in presenter view.** Notes that are taller than
   the space beside the current and next slides now get their own vertical
   scrollbar instead of being cut off.
@@ -66,17 +82,6 @@ pre-1.0.
   slide. Interactive states stay behind for now, since a pasted state would
   arrive as an ordinary slide cut off from its parent. Thanks to tikurahul
   (#615).
-- **Turn text into code without leaving the text box.** Type a fenced block
-  — a line of three backticks (optionally with a language, like ```` ```js ````
-  or ```` ```python ````), your code, and a closing line of three backticks —
-  and when you finish editing it becomes a real Code element: highlighted,
-  with its language set, and able to morph between slides. If the box held
-  only the fence it turns into the Code element in place; text above or below
-  stays as text boxes stacked around it. Pasting fenced text works the same,
-  into a text box or straight onto the slide. Backticks inside the code are
-  kept as typed, and an unclosed fence stays plain text. You can also select
-  one or more lines and press `` ` `` to set them in code style; press it
-  again to undo that.
 - **Screen readers announce what each Save-as and Share command does.** The
   menus keep one-line rows with the description on hover, and the same text
   is now read out as the command's description; the Save-as list scrolls when
@@ -87,7 +92,6 @@ pre-1.0.
   draws a clear amber ring. Also fixed: the Save caret's ▾ vanished at
   medium window widths, rows in the phone ⋯ menu were centred, and menus in
   the dark theme cast a navy shadow that did not show.
-
 - **Save is the top bar's primary button; the bar's other buttons line up.**
   Save and its save-as caret are now filled with the text colour, like the
   primary buttons in dialogs, in light and dark themes. The amber
