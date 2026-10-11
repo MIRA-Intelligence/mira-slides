@@ -326,7 +326,7 @@ export function initCollab(store: Store, editor: Editor): void {
     }
     session.stampInto(store.doc);
     // Built in share.ts, the one place share copies are minted (and the place
-    // test-export-secrets, test-type-share and test-type-copies inspect).
+    // test-export-secrets and test-type-share inspect).
     const clone = await inviteCopy(store.doc, c.ownerPriv, { withHistory });
     try {
       const ok = await writeUpdatedFileAs(await serializeAuto(clone), clone, { suffix: 'invite' });

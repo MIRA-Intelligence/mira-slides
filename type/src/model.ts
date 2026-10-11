@@ -457,7 +457,7 @@ export function copyIsReceiveOnly(collab: TypeDoc['collab'] | undefined): boolea
  * whoever pastes it. A key this build does not declare is dropped too, so a
  * field added later fails closed rather than riding out on the clipboard.
  * scripts/test-export-secrets.ts asserts the credential half across every app
- * with a clipboard export; scripts/test-type-copies.ts asserts the rest.
+ * with a clipboard export; scripts/test-type-share.ts asserts the rest.
  *
  * Mail merge (merge.ts) builds every per-recipient file from this, then mints a
  * fresh docId per output — see the tier-gap note there.
