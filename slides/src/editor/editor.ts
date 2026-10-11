@@ -91,13 +91,16 @@ const SHAPE_MENU: Array<{ kind: ShapeKind; label: string; icon: string; heads?: 
 ]
 
 /**
- * The PowerPoint importer on the site (bento/convert's page, #589). A LINK,
- * not a feature of this file: the conversion needs the network, and a saved
- * deck never loads anything on its own, so the entry opens the page in a new
- * tab and says so in its tooltip. Slides' release carries the site, so the
- * entry and the page ship together.
+ * The PowerPoint converter on the site (bento/convert's page, #589): one page,
+ * in and out. LINKS, not features of this file: the conversion needs the
+ * network, and a saved deck never loads anything on its own, so each entry
+ * opens the page in a new tab and says so in its tooltip. Slides' release
+ * carries the site, so the entries and the page ship together. Import opens
+ * the page straight on its .pptx side; the old /import path still redirects
+ * there for shells that predate this.
  */
-export const IMPORT_PPTX_URL = 'https://bento.page/import'
+export const IMPORT_PPTX_URL = 'https://bento.page/convert?from=pptx'
+export const EXPORT_PPTX_URL = 'https://bento.page/convert'
 
 /**
  * May this copy write? An ALLOWLIST that fails closed: a deck with no live
@@ -1004,6 +1007,9 @@ export class Editor {
       item(ICONS.importDoc, t('Import PowerPoint…'),
         t('Opens the PowerPoint importer on bento.page in a new tab — it turns a .pptx into a Bento deck. Needs an internet connection.'),
         () => { window.open(IMPORT_PPTX_URL, '_blank', 'noopener,noreferrer') })
+      item(ICONS.exportDoc, t('Export for PowerPoint…'),
+        t('Opens the converter on bento.page in a new tab — drop this deck’s saved file there to get a .pptx. The deck is not uploaded. Needs an internet connection.'),
+        () => { window.open(EXPORT_PPTX_URL, '_blank', 'noopener,noreferrer') })
       item(ICONS.template, t('Start from scratch…'),
         t('Replace every slide with one blank slide. Keeps the deck’s theme, name and live session — ⌘Z undoes.'),
         () => this.startFromScratch())

@@ -2283,9 +2283,11 @@ jobs:
         # unknown-role copy arriving in a running editor (dropped, loadDoc) gets
         # no write actions and is locked; owner and writer copies keep theirs.
         run: node scripts/test-slides-audience-gate-browser.mjs
-      - name: Import PowerPoint link in Chromium
-        # Save as → Import PowerPoint… opens only the bento.page importer, in a
-        # new tab with no opener, and its tooltip says it needs the network.
+      - name: PowerPoint converter links in Chromium
+        # Save as → Import PowerPoint… (/convert?from=pptx) and Export for
+        # PowerPoint… (/convert), in that order after Replace from JSON…, each
+        # opens only its URL in a new tab with no opener, and says it needs
+        # the network.
         run: node scripts/test-slides-import-link-browser.mjs
       - name: Under-specified documents boot in Chromium
         # parseDoc fills required fields only where absent and drops elements

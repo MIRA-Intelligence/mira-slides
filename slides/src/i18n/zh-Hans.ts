@@ -608,6 +608,8 @@ export const zhHans: Catalog = {
   "Replace from JSON…": "从 JSON 替换…",
   "Import PowerPoint…": "导入 PowerPoint…",
   "Opens the PowerPoint importer on bento.page in a new tab — it turns a .pptx into a Bento deck. Needs an internet connection.": "在新标签页打开 bento.page 上的 PowerPoint 导入工具，将 .pptx 转换为 Bento 演示文稿。需要联网。",
+  "Export for PowerPoint…": "导出为 PowerPoint…",
+  "Opens the converter on bento.page in a new tab — drop this deck’s saved file there to get a .pptx. The deck is not uploaded. Needs an internet connection.": "在新标签页打开 bento.page 上的转换工具，把这份演示文稿已保存的文件拖进去即可得到 .pptx。演示文稿不会被上传。需要联网。",
   "Reset access? Every copy you’ve sent stops syncing; only copies saved after this can join.": "重置访问权限？已发送的所有副本将停止同步；只有此后保存的副本才能加入。",
   "Reset access…": "重置访问权限…",
   "Save a copy…": "保存副本…",

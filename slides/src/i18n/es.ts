@@ -608,6 +608,8 @@ export const es: Catalog = {
   "Replace from JSON…": "Reemplazar desde JSON…",
   "Import PowerPoint…": "Importar PowerPoint…",
   "Opens the PowerPoint importer on bento.page in a new tab — it turns a .pptx into a Bento deck. Needs an internet connection.": "Abre el importador de PowerPoint de bento.page en una pestaña nueva: convierte un .pptx en una presentación de Bento. Necesita conexión a internet.",
+  "Export for PowerPoint…": "Exportar para PowerPoint…",
+  "Opens the converter on bento.page in a new tab — drop this deck’s saved file there to get a .pptx. The deck is not uploaded. Needs an internet connection.": "Abre el conversor de bento.page en una pestaña nueva: suelta allí el archivo guardado de esta presentación para obtener un .pptx. La presentación no se sube. Necesita conexión a internet.",
   "Reset access? Every copy you’ve sent stops syncing; only copies saved after this can join.": "¿Restablecer el acceso? Todas las copias enviadas dejarán de sincronizarse; solo podrán unirse las guardadas después.",
   "Reset access…": "Restablecer acceso…",
   "Save a copy…": "Guardar una copia…",

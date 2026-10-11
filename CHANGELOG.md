@@ -29,7 +29,10 @@ pre-1.0.
   dropped and offers what it can become; there's a sample deck to try. As
   before, nothing is uploaded: the conversion runs in your browser, and the
   page only downloads the signed bento/slides release when it makes a deck.
-  bento.page/import now opens this page, so its links keep working.
+  bento.page/import now opens this page, so its links keep working. In
+  slides, the Save menu has both ways in: "Import PowerPoint…" opens the page
+  ready for a .pptx, and "Export for PowerPoint…" opens it for this deck's
+  saved file.
 
 - **Saving as PowerPoint keeps more of your deck.** Speaker notes, links,
   tables, charts, pictures and hidden slides come across, and now code
