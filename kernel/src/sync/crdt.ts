@@ -197,7 +197,16 @@ export const shape = (
   // restriction (the typed helper is the compile half). A key not classed
   // 'history', or named with no class map at all, is refused here so it can
   // never widen what syncs beyond a history field an app chose to share.
+  // BELT AND BRACES: also refuse a key that is in skipDoc. The class check
+  // trusts the app's own map, and nothing pins collab/revisions to their class —
+  // an app that MIS-classes a never-synced key as 'history' and names it here
+  // would pass the class check, leaving only the gate ORDER (skipDoc first) to
+  // protect it. Refusing skipDoc ∩ syncHistory at bind time makes a never-synced
+  // field safe regardless of gate order: it can't be named at all.
   for (const k of syncHistory) {
+    if (skipDoc.has(k)) {
+      throw new Error(`DocShape.syncHistory names "${k}", which is in the never-synced set (skipDoc); a floor field can never be shared, whatever its class`)
+    }
     if (!classes || classes[k] !== 'history') {
       throw new Error(`DocShape.syncHistory names "${k}", which is ${classes ? `classed ${classes[k] ?? 'nothing'}` : 'bound with no class map'}; only history-class keys may sync this way`)
     }

@@ -26,6 +26,8 @@
 //   - outboundDocKey, drop `syncHistory.has(k) → true`   : comments stop being emitted
 //   - ignoreInboundDocKey, drop `syncHistory.has(k) → false`: comments refused inbound
 //   - shape(), drop the history-class throw               : runtime-refusal rows red
+//   - shape(), drop the skipDoc-in-syncHistory throw       : the bind-time floor rows red
+//   - outboundDocKey, move syncHistory ABOVE the skipDoc check : the gate-order floor rows red
 //   - historySyncKeys, loosen the key type                : the @ts-expect-error lines fail tsc
 
 import { SyncEngine, shape, historySyncKeys } from '../slides/src/sync/crdt.ts'
@@ -112,19 +114,23 @@ H('MIXED VERSION: a shared-build peer and a 1.2.7 peer see the same comments')
   ok(JSON.stringify((dN.comments as Rec).T2) === JSON.stringify({ text: 'from old' }), 'and the shared build receives the 1.2.7 peer\'s comments')
 }
 
-H('the skipDoc floor is still checked first')
+H('the skipDoc floor is checked first at the gate too (defence in depth)')
 {
-  // revisions is history-class, so listing it is allowed at runtime — but skipDoc
-  // must still refuse it, both directions.
-  const FLOOR: DocShape = shape('body', null, 'text', [], TFIELDS, historySyncKeys(TFIELDS, ['revisions']))
-  class Floor extends SyncEngine { constructor(a: string) { super(a, FLOOR) } }
-  const A = new Floor('a'); const d = doc({ revisions: [{ id: 'r1' }] }); A.adopt(d as never)
+  // shape() refuses a skipDoc key in syncHistory at bind time (below). But the
+  // gate is the second line: even a FORGED shape that got a skipDoc key past the
+  // bind guard must still be refused, because skipDoc is checked FIRST in both
+  // gates. Force `revisions` in past the guard and prove the gate holds. (This
+  // is the row security's "override above the floor" gate-order mutation reds.)
+  const FORGED: DocShape = shape('body', null, 'text', [], TFIELDS)
+  ;(FORGED.syncHistory as Set<string>).add('revisions')
+  class Forged extends SyncEngine { constructor(a: string) { super(a, FORGED) } }
+  const A = new Forged('a'); const d = doc({ revisions: [{ id: 'r1' }] }); A.adopt(d as never)
   const before = clone(d); (d.revisions as unknown[]).push({ id: 'r2' })
   ok(!docSets(A.diff(before, d as never, { text: true }) as never).includes('revisions'),
-    'a skipDoc key is never emitted even when named in syncHistory')
-  const B = new Floor('b'); const bd = doc(); B.adopt(bd as never)
+    'a skipDoc key forced into syncHistory is still never emitted (gate order)')
+  const B = new Forged('b'); const bd = doc(); B.adopt(bd as never)
   B.apply(bd as never, [{ op: 'set', k: 'revisions', v: [{ id: 'EVIL' }], a: 'evil', s: 1, l: 9000 }] as never)
-  ok((bd as Rec).revisions === undefined, 'and is still refused inbound')
+  ok((bd as Rec).revisions === undefined, 'and is still refused inbound (gate order)')
 }
 
 H('syncHistory may name ONLY history-class keys — runtime refusal')
@@ -135,6 +141,13 @@ H('syncHistory may name ONLY history-class keys — runtime refusal')
   ok(throws(() => shape('body', null, 'text', [], TFIELDS, ['readonly'])), 'a mode key is refused')
   ok(throws(() => shape('body', null, 'text', [], TFIELDS, ['nope'])), 'an unclassified key is refused')
   ok(throws(() => shape('body', null, 'text', [], undefined, ['comments'])), 'naming a key with no class map is refused')
+  // belt and braces: a skipDoc key is refused at bind time regardless of its
+  // class — the guard must not trust the app's map to keep a floor field out.
+  ok(throws(() => shape('body', null, 'text', [], TFIELDS, ['revisions'])),
+    'a skipDoc key (revisions) is refused at bind time though it is history-class')
+  const MISCLASSED = { ...TFIELDS, collab: 'history' } satisfies Record<string, FieldClass>
+  ok(throws(() => shape('body', null, 'text', [], MISCLASSED, ['collab'])),
+    'a skipDoc key MIS-classed history + named is refused — the floor does not trust the class map')
   ok(!throws(() => shape('body', null, 'text', [], TFIELDS, ['comments'])), 'a history key is accepted')
 }
 
