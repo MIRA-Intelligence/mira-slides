@@ -365,5 +365,31 @@ console.log('\nkey coverage')
   ok(slideMissing.length === 0, `every slide property in the format has a check (missing: ${slideMissing.join(', ') || 'none'})`)
 }
 
+// --- copying never puts an embedded deck's envelope on the system clipboard --
+// The clipboard is readable by any app: a copied embed whose document (or a
+// document nested inside it) carries another deck's envelope — collab, docId —
+// must leave that behind. Read from the RAW serialized text, before any paste
+// gate, because that text is what lands on the clipboard.
+{
+  console.log('\nclipboard: embedded envelopes stay behind\n')
+  const env = (tag: string) => ({ docId: `${tag}-DOCID`, collab: { room: `w${tag}-ROOM`, key: `${tag}-ROOM-KEY`, v: 2,
+    ownerPriv: `${tag}-OWNER-PRIV`, writerPriv: `${tag}-WRITER-PRIV`, invite: { pub: 'p', priv: `${tag}-INV-PRIV`, role: 'writer', sig: 's' } } })
+  const needles = ['C1', 'C2'].flatMap((t) => [`${t}-DOCID`, `w${t}-ROOM`, `${t}-ROOM-KEY`, `${t}-OWNER-PRIV`, `${t}-WRITER-PRIV`, `${t}-INV-PRIV`])
+  const deck = (tag: string, inner?: unknown) => ({ format: 'bento/slides', version: 1, title: `clip deck ${tag}`, ...env(tag),
+    slides: [{ id: `${tag}-s`, elements: inner === undefined ? [] : [{ id: `${tag}-e`, type: 'embed', app: 'slides', doc: inner }] }] })
+  const doc = newDoc() as any
+  doc.slides[0].elements = [{ id: 'clip-embed', type: 'embed', x: 0, y: 0, w: 400, h: 300, rotation: 0, opacity: 1, app: 'slides', doc: deck('C1', deck('C2')) }]
+  const before = JSON.stringify(doc)
+  const found = (s: string) => needles.filter((n) => s.includes(n))
+  ok(found(before).length === needles.length, `the deck carries both levels' envelopes (${found(before).length}/${needles.length}) — the rows below are not vacuous`)
+  const elText = serializeElements(doc.slides[0].elements, doc)
+  ok(found(elText).length === 0, `copying ELEMENTS puts none of it on the clipboard (${found(elText).join(', ') || 'none'})`)
+  ok(elText.includes('clip deck C1') && elText.includes('clip deck C2'), '…and the embedded content still copies, both levels')
+  const slText = serializeSlides(doc.slides, doc)
+  ok(found(slText).length === 0, `copying SLIDES puts none of it on the clipboard (${found(slText).join(', ') || 'none'})`)
+  ok(slText.includes('clip deck C1') && slText.includes('clip deck C2'), '…and the embedded content still copies, both levels')
+  ok(JSON.stringify(doc) === before, 'the open deck is not modified by copying')
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed`)
 if (failures) process.exit(1)

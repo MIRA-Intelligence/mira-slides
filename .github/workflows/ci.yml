@@ -1097,6 +1097,18 @@ jobs:
         # auth or calls itself an Editor — an allowlist, failing closed.
         run: node scripts/test-dash-share-dirty.ts
 
+      - name: bento/dash sync inbound
+        # A peer cannot set this copy's room, docId, readonly, template,
+        # format, version or policy — by relay op, by snapshot, or by a frame
+        # injected on the same-origin BroadcastChannel.
+        run: node scripts/test-dash-sync-inbound.ts
+
+      - name: bento/dash room snapshot and inbound fields
+        # A dash room snapshot carries no never-synced field (collab first); a
+        # remote op or snapshot can't adopt one; no prototype-shaped name off the
+        # wire reaches any object, and a prototype-named actor can't throw.
+        run: node scripts/test-dash-snapshot-collab.ts
+
       - name: bento/dash save race (kernel SaveQueue)
         # The unsaved dot goes out only for the revision that was written; a
         # dropped file's handle swap waits for the write in flight; an in-place
@@ -1875,6 +1887,15 @@ jobs:
             echo 'negative control passed with the boundary removed'; exit 1; fi
           node scripts/test-audience-projection.ts
 
+      - name: Audience embed rig
+        # An embed's document can carry another deck's envelope (collab +
+        # docId); the handout, the live snapshot and every live op the real
+        # engine emits must arrive without it. Negative control first.
+        run: |
+          if node scripts/test-audience-embed.ts --mutate > /dev/null 2>&1; then
+            echo 'negative control passed with the envelope rule emptied'; exit 1; fi
+          node scripts/test-audience-embed.ts
+
       - name: Broadcast follow-mode rig
         # The audience side's decisions (slides/src/follow.ts): nav by slide
         # ID with the index only as fallback — an insert mid-talk moves nobody;
@@ -2244,6 +2265,16 @@ jobs:
         # flat document, text on the parent, a store with one listener and no
         # dirty flag — so a surviving slides assumption shows up there.
         run: node --no-warnings scripts/test-sync-session.ts
+
+      - name: Room snapshot carries no capability fields
+        # Every snapshot path (relay upload, fork broadcast, re-snap, flush-time
+        # fork snap) builds from one helper that strips the never-synced fields.
+        run: node --no-warnings scripts/test-sync-snapshot-collab.ts
+
+      - name: Remote ops and snapshots can't rewrite identity, capability or modes
+        # The never-synced set is also the receive filter (applySet and
+        # mergeSnapshot), and no prototype-shaped name reaches any object.
+        run: node --no-warnings scripts/test-sync-inbound-docfields.ts
 
       - name: the spaces binding of the sync session
         # Only what bento/spaces answers DIFFERENTLY, because three of the five

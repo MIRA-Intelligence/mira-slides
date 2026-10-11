@@ -17,6 +17,7 @@
 import type { BentoDoc, Slide, SlideElement, TextElement } from '../model'
 import { uid } from '../model'
 import { firstFamily } from '../fonts'
+import { stripEmbeddedEnvelopes } from '../envelope'
 import { LIMITS, sanitizeAssets, sanitizeElement, sanitizeFonts, sanitizeSlide } from '../untrusted'
 
 export interface ClipPayload {
@@ -59,11 +60,23 @@ function collectAssets(els: SlideElement[], fonts: NonNullable<BentoDoc['fonts']
   return out
 }
 
+/**
+ * A deep clone with every embedded document's envelope removed (envelope.ts —
+ * the rule every other copy applies). The system clipboard is readable by any
+ * app, and a payload pasted into a chat must not carry another deck's room key.
+ * The paste side gates the same rule on the way back in.
+ */
+function cloneForClipboard<T extends { elements: SlideElement[] }>(slides: T[]): T[] {
+  const out = JSON.parse(JSON.stringify(slides)) as T[]
+  stripEmbeddedEnvelopes({ slides: out } as unknown as BentoDoc)
+  return out
+}
+
 export function serializeElements(els: SlideElement[], doc: BentoDoc): string {
   const fonts = fontsFor(els, doc)
   const payload: ClipPayload = {
     __bento: 'clip', kind: 'elements',
-    elements: JSON.parse(JSON.stringify(els)),
+    elements: cloneForClipboard([{ elements: els }])[0].elements,
     assets: collectAssets(els, fonts, doc),
     fonts,
   }
@@ -75,7 +88,7 @@ export function serializeSlides(slides: Slide[], doc: BentoDoc): string {
   const fonts = fontsFor(els, doc)
   const payload: ClipPayload = {
     __bento: 'clip', kind: 'slides',
-    slides: JSON.parse(JSON.stringify(slides)),
+    slides: cloneForClipboard(slides),
     assets: collectAssets(els, fonts, doc),
     fonts,
   }

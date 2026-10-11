@@ -21,6 +21,7 @@ import {
   SyncEngine,
   SYNC_V,
   BLOB_INLINE_MAX,
+  DOC_NODE,
   type BlobRef,
   type CollabCreds,
   type Op,
@@ -685,14 +686,9 @@ export class SyncSession {
     this.forkPending = true
     this.carriesForkState = true
     try {
-      // inlined rather than this.snapshot() — that calls flush(), and flush()
-      // is our caller
-      this.broadcast({
-        t: 'snap',
-        a: this.actor,
-        doc: this.snapshotDoc(),
-        state: JSON.parse(JSON.stringify(this.state.toJSON())),
-      })
+      // snapshotPair() rather than this.snapshot() — that calls flush(), and
+      // flush() is our caller
+      this.broadcast({ t: 'snap', a: this.actor, ...this.snapshotPair() })
     } catch (e2) {
       // snapshot itself failed (state unserializable) — the shadow is still
       // advanced, so editing continues and the next reconnect retries
@@ -1023,6 +1019,15 @@ export class SyncSession {
    */
   private snapshotDoc(): SyncDoc {
     const doc = JSON.parse(JSON.stringify(this.store.doc)) as SyncDoc
+    // A snapshot is readable by EVERY room-key holder, readers included, but the
+    // live doc carries this device's whole collab block (owner / writer private
+    // keys, invite material). So every never-synced field leaves the snapshot:
+    // the engine's skipDoc set, unconditionally and map-independently, apart
+    // from the structural container. Receivers lose nothing — mergeSnapshot only
+    // copies keys that have a register, and skipDoc keys never get one.
+    const skip = this.state.S.skipDoc
+    const rec = doc as unknown as Record<string, unknown>
+    for (const k of Object.keys(rec)) if (skip.has(k) && k !== this.state.S.parents) delete rec[k]
     const assets = doc.assets
     if (assets)
       for (const [k, v] of Object.entries(assets))
@@ -1030,13 +1035,32 @@ export class SyncSession {
     return doc
   }
 
+  /** The sync state as a snapshot may carry it: the doc-level registers of every
+   *  key snapshotDoc() strips are dropped too — a register whose value is missing
+   *  from the snapshot doc would read to a receiver's mergeSnapshot as a DELETE. */
+  private snapshotState(): SyncStateJSON {
+    const j = JSON.parse(JSON.stringify(this.state.toJSON())) as SyncStateJSON
+    const skip = this.state.S.skipDoc
+    const regs: SyncStateJSON['regs'] = {}
+    for (const [rk, r] of Object.entries(j.regs ?? {})) {
+      if (rk.startsWith(`${DOC_NODE} `) && skip.has(rk.slice(DOC_NODE.length + 1))) continue
+      regs[rk] = r
+    }
+    j.regs = regs
+    return j
+  }
+
+  /** THE snapshot builder. Every path that sends a snapshot off this peer — the
+   *  relay upload (snapshot()), the hello re-snap, the fork broadcast, and the
+   *  flush-time fork snap — builds from this and from nothing else. */
+  private snapshotPair(): { doc: SyncDoc; state: SyncStateJSON } {
+    return { doc: this.snapshotDoc(), state: this.snapshotState() }
+  }
+
   /** current (doc, sync-state) pair for an encrypted relay snapshot */
   snapshot(): { doc: SyncDoc; state: SyncStateJSON } {
     this.flush()
-    return {
-      doc: this.snapshotDoc(),
-      state: JSON.parse(JSON.stringify(this.state.toJSON())),
-    }
+    return this.snapshotPair()
   }
 
   /** How many inline assets are still awaiting blob offload — over
