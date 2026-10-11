@@ -12,7 +12,8 @@
 // the container.
 
 import { normalize, shift as shiftMarks, type Mark } from './inline.ts';
-import { withoutCaps } from '../../kernel/src/docfields.ts';
+import { withoutCaps, projectForCopy } from '../../kernel/src/docfields.ts';
+import { TYPE_FIELDS } from './docclass.ts';
 // value import is safe: xref.ts imports only TYPES from this module, precisely
 // so the core can call into it without a cycle
 import { shiftRefs } from './xref.ts';
@@ -449,13 +450,20 @@ export function copyIsReceiveOnly(collab: TypeDoc['collab'] | undefined): boolea
  * document JSON" into a chat hands over write access to a live room, which is
  * not revocable by deleting the message.
  *
- * It strips by REMOVING the field rather than by listing the fields to keep,
- * deliberately: a private field added to CollabCreds later is then covered
- * without anyone remembering to update this. scripts/test-export-secrets.ts
- * asserts that shape across every app that has a clipboard export.
+ * Built FROM EMPTY by the kernel's copy table at tier 'copyJSON'
+ * (`projectForCopy`, with docclass.ts's TYPE_FIELDS): the whole capability
+ * block goes, and so does history — every revision (a WHOLE earlier draft),
+ * comment and signature. Text that leaves the app is a copy for someone else,
+ * whoever pastes it. A key this build does not declare is dropped too, so a
+ * field added later fails closed rather than riding out on the clipboard.
+ * scripts/test-export-secrets.ts asserts the credential half across every app
+ * with a clipboard export; scripts/test-type-copies.ts asserts the rest.
+ *
+ * Mail merge (merge.ts) builds every per-recipient file from this, then mints a
+ * fresh docId per output — see the tier-gap note there.
  */
 export function docForExport(doc: TypeDoc): TypeDoc {
-  return withoutEmbeddedCaps(withoutCaps(doc));
+  return projectForCopy(withoutEmbeddedCaps(withoutCaps(doc)), TYPE_FIELDS, 'copyJSON');
 }
 
 /**

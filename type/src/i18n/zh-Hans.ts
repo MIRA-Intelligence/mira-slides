@@ -461,4 +461,8 @@ export const zhHans: Catalog = {
   "Drop a Bento document here": "将 Bento 文档拖放到此处",
   "Choose a file…": "选择文件…",
   "Compare with a file…": "与文件比较…",
+  "This copy includes the document’s version history.": "此副本包含文档的版本历史。",
+  "Leave version history out": "不包含版本历史",
+  "Versions include text that was deleted. This file keeps them either way.": "版本中包含已删除的文字。无论如何，此文件都会保留它们。",
+  "Save invite…": "保存邀请…",
 }
