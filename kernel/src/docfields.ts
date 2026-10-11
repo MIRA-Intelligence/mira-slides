@@ -325,7 +325,15 @@ export const DEFAULT_NOT_EDIT: ReadonlySet<string> = new Set(['modified', 'previ
 
 /** A stable key over the fields that count as unsaved work, for crash-recovery
  *  comparison. ABSENT fields never change the key (skipped, never null-padded),
- *  so a document without a newer field keys identically on an older build. */
+ *  so a document without a newer field keys identically on an older build.
+ *
+ *  THE RULE for what counts: a field an app writes only at SAVE TIME belongs in
+ *  its notEdit set; anything written while EDITING counts. History counts by
+ *  default (a revision made or a trail row recorded mid-edit is unsaved work and
+ *  must survive a crash); an app exempts only what it writes at save time (e.g.
+ *  a revisions list appended in the save queue → notEdit), or a reopened
+ *  download-save shows a phantom recovery banner. Fail-safe: a missed exemption
+ *  costs a spurious banner, a wrong default costs data. */
 export function docContentKey(
   doc: object, classes: Record<string, FieldClass>, notEdit: ReadonlySet<string> = DEFAULT_NOT_EDIT,
 ): string {
