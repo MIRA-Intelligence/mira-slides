@@ -131,6 +131,56 @@ try {
   }
   await p.evaluate(() => { delete document.documentElement.dataset.theme })
 
+  // --- 3b. hover: the two halves darken, the Save-as rows do not ---------------
+  // The 1.2.7 RC shipped `.ed-split .ed-btn:hover` (a descendant selector), which
+  // also matched the Save ▾ menu's rows: a hovered row became a solid ink bar
+  // with its ink text invisible on it. Measured on REAL hovers.
+  console.log('\nhover: Save and its caret darken; Save-as rows stay readable\n')
+  const probeVar = (v) => p.evaluate((name) => { const d = document.createElement('div'); d.style.color = `var(${name})`; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c }, v)
+  const hoverAt = async (sel) => { const b = await p.locator(sel).first().boundingBox(); await p.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await p.waitForTimeout(120) }
+  const shown = (c) => c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent'
+  const rowLook = (sel, menuSel) => p.evaluate(([s, m]) => {
+    const r = document.querySelector(s), cs = getComputedStyle(r)
+    const bg = cs.backgroundColor !== 'rgba(0, 0, 0, 0)' ? cs.backgroundColor : getComputedStyle(document.querySelector(m)).backgroundColor
+    return { hovered: r.matches(':hover'), bg, fg: cs.color, name: r.getAttribute('aria-label') ?? r.textContent.trim() }
+  }, [sel, menuSel])
+  for (const theme of ['light', 'dark']) {
+    await p.evaluate((th) => { document.documentElement.dataset.theme = th }, theme)
+    const ink = await probeVar('--ink'), ink2 = await probeVar('--ink-2')
+    await hoverAt('.ed-split > .ed-btn:first-child')
+    const saveBg = await p.evaluate(() => getComputedStyle(document.querySelector('.ed-split > .ed-btn:first-child')).backgroundColor)
+    ok(saveBg === ink2, `${theme}: hovered Save is --ink-2 (${saveBg})`)
+    await hoverAt('.ed-split-caret')
+    const caretBg = await p.evaluate(() => getComputedStyle(document.querySelector('.ed-split-caret')).backgroundColor)
+    ok(caretBg === ink2, `${theme}: hovered caret is --ink-2 (${caretBg})`)
+    await p.evaluate(() => document.querySelector('.ed-split-caret').click())
+    await p.waitForTimeout(150)
+    await hoverAt('.ed-save-menu > .ed-btn')
+    const row = await rowLook('.ed-save-menu > .ed-btn', '.ed-save-menu')
+    const c = contrast(row.fg, row.bg)
+    ok(row.hovered && shown(row.bg) && row.bg !== ink && row.bg !== ink2, `${theme}: a hovered Save-as row is not an ink bar ("${row.name}" on ${row.bg})`)
+    ok(c >= 4.5, `${theme}: and its text reads, ${c.toFixed(2)}:1 ≥ 4.5`)
+    await p.keyboard.press('Escape')
+    await p.evaluate(() => document.querySelectorAll('.ed-dropdown.open').forEach((d) => d.classList.remove('open')))
+  }
+  // the phone fold carries the Save-as rows in ⋯, outside the split
+  await p.setViewportSize({ width: 390, height: 844 })
+  await p.waitForFunction(() => document.querySelector('.ed-topbar')?.classList.contains('ed-bar-fold'))
+  for (const theme of ['light', 'dark']) {
+    await p.evaluate((th) => { document.documentElement.dataset.theme = th }, theme)
+    const ink = await probeVar('--ink')
+    await p.evaluate(() => { const m = [...document.querySelectorAll('.ed-topbar .ed-phone-only > .ed-btn')].find((b) => b.textContent.includes('⋯')); if (!m.closest('.ed-dropdown').classList.contains('open')) m.click() })
+    await p.waitForTimeout(200)
+    await hoverAt('.ed-dropdown.open > .ed-menu > [data-phone-saveas].ed-btn')
+    const row = await rowLook('.ed-dropdown.open > .ed-menu > [data-phone-saveas].ed-btn', '.ed-dropdown.open > .ed-menu')
+    const c = contrast(row.fg, row.bg)
+    ok(row.hovered && row.bg !== ink && c >= 4.5, `phone ⋯, ${theme}: a hovered Save-as row reads, ${c.toFixed(2)}:1 ("${row.name}")`)
+    await p.evaluate(() => document.querySelectorAll('.ed-dropdown.open').forEach((d) => d.classList.remove('open')))
+  }
+  await p.setViewportSize({ width: 1440, height: 900 })
+  await p.waitForFunction(() => !document.querySelector('.ed-topbar')?.classList.contains('ed-bar-fold'))
+  await p.evaluate(() => { delete document.documentElement.dataset.theme })
+
   // --- 4. rebuilds do not accumulate listeners or observers -------------------
   console.log('\nrebuild: N language switches leave one set of listeners\n')
   const cdp = await ctx.newCDPSession(p)

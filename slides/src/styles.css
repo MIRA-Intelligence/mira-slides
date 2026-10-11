@@ -1997,7 +1997,10 @@ body.ed-col-resizing { cursor: col-resize; user-select: none; }
   color: var(--surface);
   padding: 6px 7px;
 }
-.ed-split .ed-btn:hover { background: var(--ink-2); border-color: var(--ink-2); }
+/* The two HALVES only. A descendant `.ed-split .ed-btn:hover` also matched
+   the Save-as menu's rows (they are .ed-btn inside the split's dropdown), so
+   a hovered row became a solid ink bar with its ink text invisible on it. */
+.ed-split > .ed-btn:first-child:hover, .ed-split-caret:hover { background: var(--ink-2); border-color: var(--ink-2); }
 .ed-caret { font-size: 10px; line-height: 1; }
 
 /* quiet divider between share actions and advanced session controls */
