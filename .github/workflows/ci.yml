@@ -2284,6 +2284,13 @@ jobs:
         # the shipped denylist. skipDoc is the floor under both.
         run: node scripts/test-sync-allowlist.ts
 
+      - name: Slides sync allowlist rig
+        # Slides binds its field-class map (slides/src/docclass.ts) into
+        # SLIDES_SHAPE: every key that synced before is still content, a
+        # non-content or unknown doc key mints no op, non-content is refused
+        # inbound, and an unknown key from a peer is applied but never echoed.
+        run: node scripts/test-slides-sync-allowlist.ts
+
       - name: the spaces binding of the sync session
         # Only what bento/spaces answers DIFFERENTLY, because three of the five
         # host answers are not slides' answers and each one is invisible until
