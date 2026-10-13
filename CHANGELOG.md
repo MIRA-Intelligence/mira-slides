@@ -11,6 +11,13 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **The top bar no longer shifts under your pointer.** Each auto-save's
+  "Saved" note, and the file name beside the deck title appearing or
+  disappearing, used to push the buttons after them sideways — so when you
+  pressed Undo a few times in a row, a click could land on Redo instead. The
+  note now shows over the end of the title, and the file name keeps its place.
+  Reported in #546.
+
 ## [1.2.7] — 2026-10-11
 
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a

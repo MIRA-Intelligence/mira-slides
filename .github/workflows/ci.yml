@@ -2344,6 +2344,11 @@ jobs:
         # primary in both themes, and N language rebuilds leaving one set of
         # window/document listeners and bar observers.
         run: node scripts/test-slides-topbar-browser.mjs
+      - name: Top bar holds still in Chromium
+        # #546: a real auto-save "Saved" flash and a file-chip change (rename to
+        # the file's name, then undo) leave Undo/Redo exactly where they were,
+        # on the desktop and the folded phone bar.
+        run: node scripts/test-slides-topbar-stable-browser.mjs
       - name: Chrome rulings in Chromium
         # D2 menu descriptions (readable both themes, ARIA-wired, scroll on a
         # short window), D4 dialog titles, D8 help shortcuts, the compact Save
