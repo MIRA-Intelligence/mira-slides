@@ -581,13 +581,23 @@ a.ed-btn { text-decoration: none; }  /* the update block's "What's new" link is 
    which would otherwise win and leave a shadowed element unfaded. */
 .ed-stage .bento-el-ghost-cut { filter: opacity(.35) !important; pointer-events: none; }
 .ed-stage .bento-editing { cursor: text; }
+/* The caret at the start of a line sits on the text box's left edge — text
+   starts flush with the element, and its geometry is the model's, so the text
+   cannot move. Everything drawn ON that edge hid the caret (#547): the ring
+   (a 1.5px shadow hugging it), the browser's focus outline, and Moveable's
+   left line, still drawn from the last selection though it has no target
+   while you edit. So the ring is an outline held 3px OUT, replacing the focus
+   outline, and the idle control box is hidden for the edit. */
 .ed-stage .bento-editing .bento-text-inner {
   cursor: text;
   user-select: text;
-  box-shadow: 0 0 0 1.5px var(--blue);
+  outline: 1.5px solid var(--blue);
+  outline-offset: 3px;
   background: rgb(91 141 239 / 0.06);
   min-height: 1em;
 }
+/* !important: Moveable writes display/visibility inline (as .ed-reader does) */
+.ed-stage-scale:has(.bento-editing) .moveable-control-box { visibility: hidden !important; }
 
 /* ————— properties panel ————— */
 

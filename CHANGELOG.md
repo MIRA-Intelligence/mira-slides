@@ -11,6 +11,13 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **The text cursor shows at the start of a line.** While editing a text
+  box, the cursor at the very beginning of a line was hidden under the blue
+  editing frame and the selection box's edge. The frame now sits a few pixels
+  outside the text, and the selection box steps aside while you type, so the
+  cursor is visible wherever it is. The text itself does not move. Reported
+  in #547.
+
 ## [1.2.7] — 2026-10-11
 
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a
