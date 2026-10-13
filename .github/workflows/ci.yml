@@ -2284,6 +2284,16 @@ jobs:
         # the shipped denylist. skipDoc is the floor under both.
         run: node scripts/test-sync-allowlist.ts
 
+      - name: Sync override for a history-class key (shape().syncHistory)
+        # A field's copy class and its sync decision can diverge: type classes
+        # `comments` history (dropped from reader/export copies) but comments
+        # must still flow live. syncHistory names such a key — emitted and
+        # accepted though non-content, with its 1.2.7 wire shape unchanged so a
+        # bound build stays mixed-version-compatible with an unbound one.
+        # Restricted to history-class keys at runtime (shape throws) and at
+        # compile time (historySyncKeys); skipDoc is still the floor.
+        run: node scripts/test-sync-history-override.ts
+
       - name: Slides sync allowlist rig
         # Slides binds its field-class map (slides/src/docclass.ts) into
         # SLIDES_SHAPE: every key that synced before is still content, a
@@ -2344,6 +2354,11 @@ jobs:
         # primary in both themes, and N language rebuilds leaving one set of
         # window/document listeners and bar observers.
         run: node scripts/test-slides-topbar-browser.mjs
+      - name: Top bar holds still in Chromium
+        # #546: a real auto-save "Saved" flash and a file-chip change (rename to
+        # the file's name, then undo) leave Undo/Redo exactly where they were,
+        # on the desktop and the folded phone bar.
+        run: node scripts/test-slides-topbar-stable-browser.mjs
       - name: Chrome rulings in Chromium
         # D2 menu descriptions (readable both themes, ARIA-wired, scroll on a
         # short window), D4 dialog titles, D8 help shortcuts, the compact Save
@@ -2359,6 +2374,15 @@ jobs:
         # range across a parent copies parents only, never its states; plural
         # and singular toasts.
         run: node scripts/test-slides-copy-slides-browser.mjs
+      - name: Rounded tables in Chromium
+        # A rounded table whose rows outgrow its box shows its last row (#494),
+        # keeps rounded corners on its real bottom, and a short one still
+        # fills its box; tables without a radius are unchanged.
+        run: node scripts/test-slides-table-radius-browser.mjs
+      - name: Paste position in Chromium
+        # ⌘C then ⌘V onto another slide keeps the element's position; onto the
+        # source slide it steps +20 and cascades (#569).
+        run: node scripts/test-slides-paste-position-browser.mjs
       - name: Save queue in Chromium
         # Real ⌘S and auto-save with the file write held open: an edit made
         # during a write stays dirty, writes never overlap, the dot goes out
@@ -2375,6 +2399,17 @@ jobs:
         # typing at the end of that line is plain text, at the box's end or
         # before a line break; opening and closing a box changes nothing.
         run: node scripts/test-slides-code-run-exit-browser.mjs
+      - name: Connectors route on every slide in Chromium
+        # #493: a deck saved or loaded with stale connector endpoints opens with
+        # every slide's connectors on their elements' borders (thumbnail too),
+        # without dirtying the deck or making an undo step.
+        run: node scripts/test-slides-connectors-browser.mjs
+      - name: Caret at the start of a line in Chromium
+        # #547: with the caret at a text box's left edge, nothing paints over
+        # it — the editing ring is an outline held off the box, Moveable's
+        # leftover lines are hidden for the edit, and a screenshot of the strip
+        # beside the caret has no ring-blue in it; the text does not move.
+        run: node scripts/test-slides-caret-ring-browser.mjs
 
   spaces-save-browser:
     runs-on: ubuntu-latest

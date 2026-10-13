@@ -16,6 +16,37 @@ pre-1.0.
   or pasted — the caret could only sit inside the code, so everything typed at
   the end of that line became code too, and no key got you out. Reported in
   discussion #626.
+- **Connectors in decks written outside the editor now attach.** A deck made
+  by hand or by an AI agent can name the two elements a connector joins
+  without giving it the right endpoints. Until now only the slide on screen was
+  ever re-routed, and only after an edit, so a connector on any other slide sat
+  wherever the file put it — in the thumbnails, the slideshow and the PDF. Every
+  slide's connectors now land on their elements' borders as the deck opens, or
+  is replaced from JSON. Doing so is not an edit: the deck is not marked unsaved
+  and there is nothing to undo. (#493)
+- **A table with rounded corners no longer hides rows.** When a rounded
+  table's rows needed more height than its box, the rows past the bottom were
+  cut off with nothing to say so. They now show, as they always did for a table
+  without rounded corners, and the corners sit on the table's real bottom.
+  Checking a deck (`bento check`, `validate()`) reports a new `table-overflow`
+  warning with how many pixels the box is short. Reported in #494.
+- **The text cursor shows at the start of a line.** While editing a text
+  box, the cursor at the very beginning of a line was hidden under the blue
+  editing frame and the selection box's edge. The frame now sits a few pixels
+  outside the text, and the selection box steps aside while you type, so the
+  cursor is visible wherever it is. The text itself does not move. Reported
+  in #547.
+- **The top bar no longer shifts under your pointer.** Each auto-save's
+  "Saved" note, and the file name beside the deck title appearing or
+  disappearing, used to push the buttons after them sideways — so when you
+  pressed Undo a few times in a row, a click could land on Redo instead. The
+  note now shows over the end of the title, and the file name keeps its place.
+  Reported in #546.
+- **Pasting onto another slide keeps the position.** Copy a logo, a header or
+  any element and paste it onto a different slide, and it lands exactly where
+  it was. It steps down and right only when it would cover the same element
+  (pasting onto the slide you copied from, or pasting twice), so repeated
+  pastes still fan out. Reported in #569.
 
 ## [1.2.7] — 2026-10-11
 
