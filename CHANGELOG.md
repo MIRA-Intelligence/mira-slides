@@ -17,6 +17,11 @@ pre-1.0.
   pressed Undo a few times in a row, a click could land on Redo instead. The
   note now shows over the end of the title, and the file name keeps its place.
   Reported in #546.
+- **Pasting onto another slide keeps the position.** Copy a logo, a header or
+  any element and paste it onto a different slide, and it lands exactly where
+  it was. It steps down and right only when it would cover the same element
+  (pasting onto the slide you copied from, or pasting twice), so repeated
+  pastes still fan out. Reported in #569.
 
 ## [1.2.7] — 2026-10-11
 

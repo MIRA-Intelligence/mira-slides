@@ -2284,6 +2284,16 @@ jobs:
         # the shipped denylist. skipDoc is the floor under both.
         run: node scripts/test-sync-allowlist.ts
 
+      - name: Sync override for a history-class key (shape().syncHistory)
+        # A field's copy class and its sync decision can diverge: type classes
+        # `comments` history (dropped from reader/export copies) but comments
+        # must still flow live. syncHistory names such a key — emitted and
+        # accepted though non-content, with its 1.2.7 wire shape unchanged so a
+        # bound build stays mixed-version-compatible with an unbound one.
+        # Restricted to history-class keys at runtime (shape throws) and at
+        # compile time (historySyncKeys); skipDoc is still the floor.
+        run: node scripts/test-sync-history-override.ts
+
       - name: Slides sync allowlist rig
         # Slides binds its field-class map (slides/src/docclass.ts) into
         # SLIDES_SHAPE: every key that synced before is still content, a
@@ -2364,6 +2374,10 @@ jobs:
         # range across a parent copies parents only, never its states; plural
         # and singular toasts.
         run: node scripts/test-slides-copy-slides-browser.mjs
+      - name: Paste position in Chromium
+        # ⌘C then ⌘V onto another slide keeps the element's position; onto the
+        # source slide it steps +20 and cascades (#569).
+        run: node scripts/test-slides-paste-position-browser.mjs
       - name: Save queue in Chromium
         # Real ⌘S and auto-save with the file write held open: an edit made
         # during a write stays dirty, writes never overlap, the dot goes out
