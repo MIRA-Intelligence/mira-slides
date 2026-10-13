@@ -1337,6 +1337,10 @@ Versions follow `0.MINOR.PATCH` while pre-1.0.
   saves the invite with no versions, so the deleted text in them stays behind;
   the file you are editing keeps all of them either way. The default is to
   include it. A space with no history goes straight to saving, as before.
+- **A live session shares only the space's content.** Spaces now tells the
+  sync engine which document fields are content, so a collaborator's copy only
+  ever sends those. A field written by a newer version of Bento is kept in your
+  file when it arrives, but never passed on to the rest of the room.
 
 ## [0.1.0] — 2026-08-03
 
