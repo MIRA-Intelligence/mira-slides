@@ -181,6 +181,20 @@ const settle = () => new Promise((r) => setTimeout(r, 10))
     'and a legacy entry whose name is not the file on screen is still rejected (name guard holds on the fallback)')
 }
 
+// 7d. #556 edge (security): with NO file name on screen (the hosted app, nothing
+// open — openedFileName() is null), a docId-only entry must NOT reconnect: there
+// is no name to verify it against, and a real reopen always has one.
+{
+  reset()
+  ;(globalThis as Record<string, unknown>).location = { href: 'https://bento.page/', protocol: 'https:', origin: 'https://bento.page' } // no .bento.html basename → openedFileName() === null
+  const h = new FakeFSHandle('anything.bento.html', { q: 'granted' })
+  store.set('d1', h) // a legacy docId-only entry
+  ok((await reconnectHandle(DOC as never)) === null, 'with no file name on screen, a docId-only entry is not reconnected (no name to check → picker)')
+  ok(h.queryCalls === 0 && h.requestCalls === 0, 'and its permission is never touched')
+  ok(store.has('d1'), 'the entry is kept (not proven stale)')
+  ;(globalThis as Record<string, unknown>).location = { href: 'https://bento.page/Q3-board.bento.html', protocol: 'https:', origin: 'https://bento.page' }
+}
+
 // 8. SHARED file:// ORIGIN: persistence off, and a planted entry is never used.
 // Chrome gives every file:// deck one IndexedDB, so a malicious local file can
 // plant a handle keyed to this docId and NAMED to match the file on screen —

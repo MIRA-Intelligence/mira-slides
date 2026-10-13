@@ -763,21 +763,25 @@ export async function reconnectHandle(doc: KernelDoc): Promise<FsFileHandle | nu
   // the planted-entry path. Real, isolated origins reconnect as normal.
   if (sharedStorageOrigin()) return null
   if (!doc.docId) return null
-  // Primary key is per FILE (docId + the name on screen). Fall back to the
-  // legacy docId-only key for entries written before #556 — still name-checked
-  // below, so the fallback is no weaker than the primary.
+  // The remembered handle must be the file ON SCREEN, and the only check we have
+  // on a bare reopen is its NAME (isSameEntry needs a second handle we do not
+  // have). With no name on screen — the hosted app, nothing open — there is
+  // nothing to verify against, so we do NOT reconnect: reading a docId-only entry
+  // unchecked could re-permission a handle to a different file. A real reopen
+  // always has a name.
   const onScreen = openedFileName()
-  let key = onScreen ? handleKey(doc.docId, onScreen) : doc.docId
+  if (!onScreen) return null
+  // Primary key is per FILE (docId + name). Fall back to the legacy docId-only
+  // key for entries written before #556 — the name guard below validates it too,
+  // so the fallback is no weaker than the primary.
+  let key = handleKey(doc.docId, onScreen)
   let stored: unknown
   try {
     stored = await idbHandle('get', key)
-    if (!isRealHandle(stored) && key !== doc.docId) { key = doc.docId; stored = await idbHandle('get', key) }
+    if (!isRealHandle(stored)) { key = doc.docId; stored = await idbHandle('get', key) }
   } catch { return null }
   if (!isRealHandle(stored)) return null // absent, or a host polyfill handle
-  // the remembered handle must be the file on screen: docId + name. isSameEntry
-  // needs a second handle we do not have on a bare file:// reopen, so the name
-  // check is the guard.
-  if (onScreen && stored.name !== onScreen) return null // mismatch → picker, entry kept
+  if (stored.name !== onScreen) return null // mismatch → picker, entry kept
   try {
     let perm = await stored.queryPermission({ mode: 'readwrite' })
     if (perm !== 'granted') perm = await stored.requestPermission({ mode: 'readwrite' })
