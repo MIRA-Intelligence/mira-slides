@@ -442,7 +442,12 @@ for (const app of CLIP_APPS) {
     const fn = embed.slice(embed.indexOf('export function readArtifact'))
     ok(/return \{[^}]*doc:\s*embedSafe\(/.test(fn.slice(0, fn.indexOf('\n}') + 2)),
       'type/src/embed.ts: readArtifact keeps the source document only through embedSafe — embedded documents don\'t carry sharing keys in')
-    ok(/return withoutEmbeddedCaps\(withoutCaps\(doc\)\)/.test(model),
+    // Judged inside docForExport's OWN body, with comments masked: a file-wide
+    // match, or one that reads comments, would still pass
+    // if the strip moved into a helper docForExport no longer called. The body
+    // now projects through the kernel copy table too, so the strip is matched
+    // as an expression rather than as the whole return statement.
+    ok(/withoutEmbeddedCaps\(withoutCaps\(doc\)\)/.test(mask(exportedBody(model, 'docForExport'))),
       'type/src/model.ts: docForExport also strips embedded documents\' keys')
     ok(/const clone = \(doc: TypeDoc\): TypeDoc => withoutEmbeddedCaps\(/.test(share),
       'type/src/share.ts: every share copy is built from an embed-safe clone')

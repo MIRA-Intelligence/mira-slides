@@ -288,6 +288,14 @@ export function sourceOfDoc(parsed: unknown): MergeSource | null {
 export function mergeDoc(template: TypeDoc, row: Record<string, string>,
                          columns: string[], source: string): TypeDoc {
   const out = JSON.parse(JSON.stringify(docForExport(template))) as TypeDoc;
+  // TIER GAP. A merged letter is a file for someone else with a FRESH identity,
+  // no capability and no history, and the kernel's copy table has no tier that
+  // says exactly that: 'duplicate' resets identity but KEEPS history, 'copyJSON'
+  // drops history but keeps docId. So this projects at 'copyJSON' (via
+  // docForExport) and then mints the identity here — the one post-projection
+  // identity edit projectForCopy's contract otherwise forbids. A 'merge' tier
+  // (content only; fresh identity; no capability; no history; modes dropped)
+  // would remove it; raised with kernel.
   out.docId = newDocId();
   out.signatures = [];
   out.revisions = [];

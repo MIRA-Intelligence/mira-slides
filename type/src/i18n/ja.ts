@@ -461,4 +461,8 @@ export const ja: Catalog = {
   "Drop a Bento document here": "Bento の文書をここにドロップ",
   "Choose a file…": "ファイルを選択…",
   "Compare with a file…": "ファイルと比較…",
+  "This copy includes the document’s version history.": "このコピーには、文書のバージョン履歴が含まれます。",
+  "Leave version history out": "バージョン履歴を含めない",
+  "Versions include text that was deleted. This file keeps them either way.": "バージョンには削除された本文も含まれます。このファイルにはどちらの場合も残ります。",
+  "Save invite…": "招待を保存…",
 }

@@ -461,4 +461,8 @@ export const fr: Catalog = {
   "Drop a Bento document here": "Déposez ici un document Bento",
   "Choose a file…": "Choisir un fichier…",
   "Compare with a file…": "Comparer avec un fichier…",
+  "This copy includes the document’s version history.": "Cette copie inclut l’historique des versions du document.",
+  "Leave version history out": "Ne pas inclure l’historique des versions",
+  "Versions include text that was deleted. This file keeps them either way.": "Les versions contiennent du texte supprimé. Ce fichier les conserve dans tous les cas.",
+  "Save invite…": "Enregistrer l’invitation…",
 }
