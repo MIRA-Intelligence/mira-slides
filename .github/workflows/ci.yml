@@ -2370,6 +2370,11 @@ jobs:
         # restores; paste moves it to the pointer in one undo step, across
         # slides, without two elements sharing an id on one slide.
         run: node scripts/test-slides-ghost-cut-browser.mjs
+      - name: Connectors route on every slide in Chromium
+        # #493: a deck saved or loaded with stale connector endpoints opens with
+        # every slide's connectors on their elements' borders (thumbnail too),
+        # without dirtying the deck or making an undo step.
+        run: node scripts/test-slides-connectors-browser.mjs
 
   spaces-save-browser:
     runs-on: ubuntu-latest

@@ -11,6 +11,15 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **Connectors in decks written outside the editor now attach.** A deck made
+  by hand or by an AI agent can name the two elements a connector joins
+  without giving it the right endpoints. Until now only the slide on screen was
+  ever re-routed, and only after an edit, so a connector on any other slide sat
+  wherever the file put it — in the thumbnails, the slideshow and the PDF. Every
+  slide's connectors now land on their elements' borders as the deck opens, or
+  is replaced from JSON. Doing so is not an edit: the deck is not marked unsaved
+  and there is nothing to undo. (#493)
+
 ## [1.2.7] — 2026-10-11
 
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a

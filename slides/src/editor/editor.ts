@@ -33,7 +33,7 @@ import { addVersion, clearRecovery, clearVersions, docContentKey, getRecovery, l
 import { insertElements, insertSlides, parseClip, serializeElements, serializeSlides } from './clipboard'
 import { estimatedFrames, fencedElements, splitFences } from './codefence'
 import { openSpeakerWindow, speakerIdleBody } from '../screens'
-import { boxCenter, connectorEndpoint, lineEndpoints, pathEndpoints, setLineEndpoints, setPathEndpoints } from './lineedit'
+import { routeAllConnectors } from '../connectors'
 import { ICONS } from '../icons'
 import { t, setLocale, locale, localeChoices, LOCALE_CHOICES, applyDirection, isRtl } from '../i18n'
 import { stepOf } from '../steps'
@@ -2609,38 +2609,14 @@ export class Editor {
   }
 
   /** Re-route connectors (line and open-path shapes anchored to elements via
-   *  from/to) when anything on the slide moves. Derived, not committed — every
-   *  replica computes the same endpoints from the element boxes (mirrors
-   *  syncLinkedCharts). A line moves its two endpoints; a curve (#302) moves
-   *  its first/last anchor and keeps every interior point (tips.movePathEnds). */
+   *  from/to) when anything moves — on EVERY slide, not just the one on screen:
+   *  a deck replaced by JSON, a remote op on another slide, or an undo can
+   *  leave any slide's connectors stale, and the thumbnails, the show and print
+   *  all read the model. Derived, not committed — every replica computes the
+   *  same endpoints from the element boxes (mirrors syncLinkedCharts); see
+   *  connectors.ts routeConnectors. Boot routes the whole deck once (main.ts). */
   private syncConnectors() {
-    const slide = this.store.slide
-    const byId = new Map(slide.elements.map((e) => [e.id, e]))
-    let changed = false
-    for (const el of slide.elements) {
-      if (el.type !== 'shape' || (el.shape !== 'line' && el.shape !== 'path')) continue
-      const c = el as import('../model').ShapeElement
-      if (!c.from && !c.to) continue
-      if (c.from && !byId.has(c.from.el)) { delete c.from; changed = true }
-      if (c.to && !byId.has(c.to.el)) { delete c.to; changed = true }
-      if (!c.from && !c.to) continue
-      const isPath = c.shape === 'path'
-      const pathEnds = isPath ? pathEndpoints(c) : null
-      if (isPath && !pathEnds) continue
-      const [a, b] = isPath ? pathEnds! : lineEndpoints(c)
-      const fromBox = c.from ? byId.get(c.from.el) : null
-      const toBox = c.to ? byId.get(c.to.el) : null
-      // explicit side → pin to that side's midpoint; 'auto' → ride the border
-      // toward the other end (kernel geom: connectorEndpoint)
-      const na = fromBox ? connectorEndpoint(fromBox, c.from?.side, toBox ? boxCenter(toBox) : b) : a
-      const nb = toBox ? connectorEndpoint(toBox, c.to?.side, fromBox ? boxCenter(fromBox) : a) : b
-      if (Math.hypot(na.x - a.x, na.y - a.y) > 0.5 || Math.hypot(nb.x - b.x, nb.y - b.y) > 0.5) {
-        if (isPath) setPathEndpoints(c, na, nb)
-        else setLineEndpoints(c, na, nb)
-        changed = true
-      }
-    }
-    if (changed) this.canvas.render()
+    if (routeAllConnectors(this.store.doc)) this.canvas.render()
   }
 
   // --- auto-save + crash recovery -----------------------------------------------
