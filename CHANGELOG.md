@@ -11,6 +11,13 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **A table with rounded corners no longer hides rows.** When a rounded
+  table's rows needed more height than its box, the rows past the bottom were
+  cut off with nothing to say so. They now show, as they always did for a table
+  without rounded corners, and the corners sit on the table's real bottom.
+  Checking a deck (`bento check`, `validate()`) reports a new `table-overflow`
+  warning with how many pixels the box is short. Reported in #494.
+
 ## [1.2.7] — 2026-10-11
 
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a

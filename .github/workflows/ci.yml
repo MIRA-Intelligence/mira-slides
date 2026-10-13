@@ -2359,6 +2359,11 @@ jobs:
         # range across a parent copies parents only, never its states; plural
         # and singular toasts.
         run: node scripts/test-slides-copy-slides-browser.mjs
+      - name: Rounded tables in Chromium
+        # A rounded table whose rows outgrow its box shows its last row (#494),
+        # keeps rounded corners on its real bottom, and a short one still
+        # fills its box; tables without a radius are unchanged.
+        run: node scripts/test-slides-table-radius-browser.mjs
       - name: Save queue in Chromium
         # Real ⌘S and auto-save with the file write held open: an edit made
         # during a write stays dirty, writes never overlap, the dot goes out
