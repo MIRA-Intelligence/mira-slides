@@ -1456,6 +1456,17 @@ export class SlideCanvas {
       inner.innerText = model.content
       this.editingShowedRaw = true
     }
+    // An inline code run that ENDS a line (last thing in the box, or right
+    // before a <br>) has no text position after it, so the caret can only sit
+    // inside it and everything typed at the end of the line became code (#626).
+    // The autoformat leaves a zero-width space after the code it makes; a box
+    // opened later (saved, pasted, from a file) gets the same escape hatch
+    // here. Commit strips every U+200B, so the saved html is unchanged.
+    for (const code of inner.querySelectorAll('code')) {
+      const next = code.nextSibling
+      if (code.closest('pre') || (next && next.nodeName !== 'BR')) continue
+      code.after(document.createTextNode('\u200b'))
+    }
     this.editing = node
     this.editListeners?.abort()
     this.editListeners = new AbortController()

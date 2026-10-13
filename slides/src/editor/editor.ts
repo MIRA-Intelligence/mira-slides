@@ -33,7 +33,7 @@ import { addVersion, clearRecovery, clearVersions, docContentKey, getRecovery, l
 import { insertElements, insertSlides, parseClip, serializeElements, serializeSlides } from './clipboard'
 import { estimatedFrames, fencedElements, splitFences } from './codefence'
 import { openSpeakerWindow, speakerIdleBody } from '../screens'
-import { boxCenter, connectorEndpoint, lineEndpoints, pathEndpoints, setLineEndpoints, setPathEndpoints } from './lineedit'
+import { routeAllConnectors } from '../connectors'
 import { ICONS } from '../icons'
 import { t, setLocale, locale, localeChoices, LOCALE_CHOICES, applyDirection, isRtl } from '../i18n'
 import { stepOf } from '../steps'
@@ -2610,38 +2610,14 @@ export class Editor {
   }
 
   /** Re-route connectors (line and open-path shapes anchored to elements via
-   *  from/to) when anything on the slide moves. Derived, not committed — every
-   *  replica computes the same endpoints from the element boxes (mirrors
-   *  syncLinkedCharts). A line moves its two endpoints; a curve (#302) moves
-   *  its first/last anchor and keeps every interior point (tips.movePathEnds). */
+   *  from/to) when anything moves — on EVERY slide, not just the one on screen:
+   *  a deck replaced by JSON, a remote op on another slide, or an undo can
+   *  leave any slide's connectors stale, and the thumbnails, the show and print
+   *  all read the model. Derived, not committed — every replica computes the
+   *  same endpoints from the element boxes (mirrors syncLinkedCharts); see
+   *  connectors.ts routeConnectors. Boot routes the whole deck once (main.ts). */
   private syncConnectors() {
-    const slide = this.store.slide
-    const byId = new Map(slide.elements.map((e) => [e.id, e]))
-    let changed = false
-    for (const el of slide.elements) {
-      if (el.type !== 'shape' || (el.shape !== 'line' && el.shape !== 'path')) continue
-      const c = el as import('../model').ShapeElement
-      if (!c.from && !c.to) continue
-      if (c.from && !byId.has(c.from.el)) { delete c.from; changed = true }
-      if (c.to && !byId.has(c.to.el)) { delete c.to; changed = true }
-      if (!c.from && !c.to) continue
-      const isPath = c.shape === 'path'
-      const pathEnds = isPath ? pathEndpoints(c) : null
-      if (isPath && !pathEnds) continue
-      const [a, b] = isPath ? pathEnds! : lineEndpoints(c)
-      const fromBox = c.from ? byId.get(c.from.el) : null
-      const toBox = c.to ? byId.get(c.to.el) : null
-      // explicit side → pin to that side's midpoint; 'auto' → ride the border
-      // toward the other end (kernel geom: connectorEndpoint)
-      const na = fromBox ? connectorEndpoint(fromBox, c.from?.side, toBox ? boxCenter(toBox) : b) : a
-      const nb = toBox ? connectorEndpoint(toBox, c.to?.side, fromBox ? boxCenter(fromBox) : a) : b
-      if (Math.hypot(na.x - a.x, na.y - a.y) > 0.5 || Math.hypot(nb.x - b.x, nb.y - b.y) > 0.5) {
-        if (isPath) setPathEndpoints(c, na, nb)
-        else setLineEndpoints(c, na, nb)
-        changed = true
-      }
-    }
-    if (changed) this.canvas.render()
+    if (routeAllConnectors(this.store.doc)) this.canvas.render()
   }
 
   // --- auto-save + crash recovery -----------------------------------------------
@@ -2821,7 +2797,10 @@ export class Editor {
       ? `${this.store.doc.title} — ${file}`
       : `${this.store.doc.title} — ${appConfig().appName}`
     if (!this.fileChip) return
-    this.fileChip.hidden = !named
+    // out of the bar only until there IS a file; after that the chip keeps its
+    // slot and goes quiet when it would repeat the title (styles.css, #546)
+    this.fileChip.hidden = !file
+    this.fileChip.classList.toggle('ed-filechip-quiet', !named)
     if (!file) return
     this.fileChip.textContent = fileBase(file)
     // Three states, because two would lie: with the API but no handle yet, ⌘S
@@ -3103,21 +3082,23 @@ export class Editor {
   }
 
   private savedTimer = 0
-  private savedHideTimer = 0
   private flashSaved(message = t('Saved')) {
-    let tag = document.querySelector<HTMLElement>('.ed-autosaved')
-    if (!tag) { tag = div('ed-autosaved'); document.querySelector('.ed-topbar .ed-title')?.after(tag) }
+    const title = document.querySelector<HTMLElement>('.ed-topbar .ed-title')
+    const bar = title?.parentElement
+    if (!title || !bar) return
+    let tag = bar.querySelector<HTMLElement>(':scope > .ed-autosaved')
+    if (!tag) { tag = div('ed-autosaved'); bar.appendChild(tag) }
     tag.textContent = message
-    // hidden while idle: at opacity 0 the tag still held its width, so after
-    // the first backup the title permanently lost the space this text needs
-    tag.hidden = false
+    // An overlay at the title's right end, never a slot in the bar: as a flex
+    // item it shifted Undo/Redo on every auto-save and clicks landed on Redo
+    // (#546). Offsets are in the bar's content coordinates, so it rides along
+    // when a too-narrow bar is scrolled.
+    tag.style.left = `${Math.max(title.offsetLeft, title.offsetLeft + title.offsetWidth - tag.offsetWidth - 6)}px`
+    tag.style.top = `${title.offsetTop + (title.offsetHeight - tag.offsetHeight) / 2}px`
     void tag.offsetWidth // paint a frame at opacity 0 so the fade-in runs
     tag.classList.add('show')
     clearTimeout(this.savedTimer)
-    clearTimeout(this.savedHideTimer)
     this.savedTimer = window.setTimeout(() => tag!.classList.remove('show'), 1400)
-    // leave layout only after the 0.25s fade-out has finished
-    this.savedHideTimer = window.setTimeout(() => { tag!.hidden = true }, 1700)
   }
 
   async save(forcePicker: boolean) {

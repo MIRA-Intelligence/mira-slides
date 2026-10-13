@@ -1018,10 +1018,20 @@ export function renderTableHtml(el: TableElement, doc: BentoDoc): string {
     })
     .join('')
   const rad = cssNum(st.radius, 0, 512)
-  const radius = rad ? `border-radius:${rad}px;overflow:hidden;` : ''
+  // A radius rounds the corners by CLIPPING, so the clip must follow the table,
+  // not the box: a wrapper held at the box's height cut off every row the box
+  // was too short for, with nothing on screen saying so (#494). As a flex column
+  // with min-height the table still fills a short box (it grows into it) and a
+  // long one makes the wrapper taller — rows overflow visibly, exactly as they
+  // do without a radius, and the rounded corners sit on the real bottom.
+  // validate()'s `table-overflow` reports the box being too short.
+  const wrap = rad
+    ? `min-height:100%;display:flex;flex-direction:column;border-radius:${rad}px;overflow:hidden;`
+    : 'height:100%;'
+  const tableH = rad ? 'flex:1 0 auto;' : 'height:100%;'
   return (
-    `<div class="bento-table-wrap" style="width:100%;height:100%;${radius}">` +
-    `<table class="bento-table" style="width:100%;height:100%;border-collapse:collapse;` +
+    `<div class="bento-table-wrap" style="width:100%;${wrap}">` +
+    `<table class="bento-table" style="width:100%;${tableH}border-collapse:collapse;` +
     `table-layout:fixed;font-family:${font};font-size:${cssNum(st.fontSize, 16, 512)}px;line-height:1.3;">` +
     `<colgroup>${cols}</colgroup>${rowsHtml}</table></div>`
   )
