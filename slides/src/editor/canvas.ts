@@ -12,6 +12,7 @@ import { defaultShape, internAsset, readableInk, uid, type ShapeElement, type Sl
 import { estimatedFrames, fencedElements, splitFences, toggleCodeOnSelection, type FencePart, type PartFrame } from './codefence'
 import { renderSlide, sanitizeHtml } from '../render'
 import { autoformatAtCaret, clearAutoformat, markdownToHtml, stripMarkerEscapes, undoAutoformat } from './markdown'
+import { inList, shiftList, shiftListHtml, undoIndent } from './listindent'
 import { bulletsToLists } from './bullets'
 import { clipboardToHtml } from './paste'
 import { execFormat, hideFormatBar, syncFormatBar } from './richtext'
@@ -1477,6 +1478,17 @@ export class SlideCanvas {
         this.commitTextEdit()
         return
       }
+      // Tab / Shift+Tab in a bullet indents / outdents it (listindent.ts);
+      // anywhere else Tab does what it always did
+      if (ev.key === 'Tab' && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+        const sel = document.getSelection()
+        const range = sel?.rangeCount ? sel.getRangeAt(0) : null
+        if (range && inList(inner, range)) {
+          ev.preventDefault()
+          shiftList(inner, range, ev.shiftKey ? -1 : 1, true)
+          return
+        }
+      }
       // ` on a selection wraps each selected line as code (on code: unwraps);
       // with nothing selected it types a backtick as usual (codefence.ts).
       // Not on the select-all that entering the box makes: typing ``` there
@@ -1494,7 +1506,7 @@ export class SlideCanvas {
         // ⌘Z right after a markdown conversion restores the literal markers;
         // otherwise the browser's native contentEditable undo runs
         if (ev.key.toLowerCase() === 'z' && !ev.shiftKey) {
-          if (undoAutoformat()) ev.preventDefault()
+          if (undoAutoformat() || undoIndent(inner)) ev.preventDefault()
           return
         }
         const cmd = { b: 'bold', i: 'italic', u: 'underline' }[ev.key.toLowerCase()]
@@ -1813,6 +1825,24 @@ export class SlideCanvas {
 
   get isEditingText() {
     return !!this.editing
+  }
+
+  /** The panel's Indent / Outdent: the bullets under the caret while a text
+   *  box is open, else the whole selected text box as one undo step. */
+  indentList(dir: 1 | -1): boolean {
+    if (this.editing && !this.editingCell) {
+      const inner = this.editing.querySelector<HTMLElement>('.bento-text-inner')
+      const sel = document.getSelection()
+      if (!inner || !sel?.rangeCount) return false
+      return shiftList(inner, sel.getRangeAt(0), dir, true)
+    }
+    const el = this.store.selectedElements
+    if (el.length !== 1 || el[0].type !== 'text') return false
+    const html = shiftListHtml(el[0].html, dir)
+    if (html === null) return false
+    const id = el[0].id
+    this.store.commit(() => { const e = this.store.element(id); if (e?.type === 'text') e.html = html })
+    return true
   }
 
   /** The element node whose text is open for editing, if any. Callers that run

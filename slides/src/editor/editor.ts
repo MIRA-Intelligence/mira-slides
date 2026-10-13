@@ -596,6 +596,7 @@ export class Editor {
     this.canvas.onCommentModeChange = (on) => commentB.classList.toggle('ed-btn-armed', on)
     this.canvas.onSlideNav = (dir) => this.store.goToLinear(dir)
     this.panel = new PropsPanel(this.props, this.store)
+    this.panel.onListIndent = (dir) => { this.canvas.indentList(dir) }
 
     if (!canWriteDeck(this.store.doc.collab)) this.enterReaderMode()
   }

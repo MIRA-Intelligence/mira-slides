@@ -139,6 +139,9 @@ const fillStyles = (): Array<[string, string]> =>
 
 export class PropsPanel {
   private burst = false
+  /** Indent (+1) / outdent (−1) bullets — set by the editor to the canvas,
+   *  which knows whether a text box is open and where its caret is. */
+  onListIndent: ((dir: 1 | -1) => void) | null = null
 
   constructor(
     private host: HTMLElement,
@@ -1108,6 +1111,25 @@ export class PropsPanel {
         (e as TextElement).fontSize = Math.round(Math.max(v, 3) * (4 / 3) * 100) / 100
       }, fin)))
     this.row('Weight', this.weightSelect(el))
+    // Indent / Outdent bullets (#368): the item under the caret while the box
+    // is open — a press here must not take the caret away, so mousedown is
+    // held — else the whole box. Tab / ⇧Tab do the same while editing.
+    const shift = document.createElement('div')
+    shift.className = 'ed-shift-row'
+    for (const [dir, label, tip] of [
+      [-1, t('Outdent'), t('Move the bullet up a level (⇧Tab while editing)')],
+      [1, t('Indent'), t('Move the bullet down a level, under the one above (Tab while editing)')],
+    ] as const) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.className = 'ed-btn'
+      b.textContent = label
+      b.title = tip
+      b.addEventListener('mousedown', (ev) => ev.preventDefault())
+      b.addEventListener('click', (ev) => { ev.preventDefault(); this.onListIndent?.(dir) })
+      shift.appendChild(b)
+    }
+    this.row('Bullets', shift)
     // Text fill: a solid colour, or a multi-stop gradient painted into the glyphs.
     const tgrad = el.colorGradient
     this.row('Fill style', this.labeledSelect(fillStyles(), tgrad ? 'gradient' : 'solid', (v) =>
