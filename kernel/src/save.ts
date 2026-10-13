@@ -697,18 +697,27 @@ function handleDb(): Promise<IDBDatabase> {
     req.onerror = () => reject(req.error)
   })
 }
-async function idbHandle(op: 'get' | 'put' | 'delete', docId: string, val?: unknown): Promise<unknown> {
+async function idbHandle(op: 'get' | 'put' | 'delete', key: string, val?: unknown): Promise<unknown> {
   const db = await handleDb()
   try {
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(HANDLE_STORE, op === 'get' ? 'readonly' : 'readwrite')
       const store = tx.objectStore(HANDLE_STORE)
-      const r = op === 'get' ? store.get(docId) : op === 'put' ? store.put(val, docId) : store.delete(docId)
+      const r = op === 'get' ? store.get(key) : op === 'put' ? store.put(val, key) : store.delete(key)
       r.onsuccess = () => resolve(op === 'get' ? r.result : undefined)
       r.onerror = () => reject(r.error)
     })
   } finally { db.close() }
 }
+
+/** The store key for one FILE's handle. A copy shares its origin's docId
+ *  ("Save a copy…" is the same deck, same live session), so keying by docId
+ *  ALONE let the last-saved file evict the other's handle: saving a copy
+ *  overwrote the original's entry, and reopening the original then fell back to
+ *  the picker (#556). Keying by docId AND file name gives each file its own
+ *  entry — correct whichever deck "Save a copy…" leaves open, because it keys
+ *  by the file that was actually written. U+001F can't occur in a file name. */
+const handleKey = (docId: string, name: string) => `${docId}\u001f${name}`
 
 /** A FileSystemFileHandle with the permission methods (not in every lib.dom). */
 type PermHandle = FsFileHandle & {
@@ -728,9 +737,10 @@ const isRealHandle = (h: unknown): h is PermHandle =>
  *  There a persistent grant has no identity to bind to, so it is not offered;
  *  the per-session handle still works. Real web origins and real-origin host
  *  apps (isolated storage) persist as normal. */
-async function persistHandle(doc: KernelDoc, handle: FsFileHandle): Promise<void> {
+export async function persistHandle(doc: KernelDoc, handle: FsFileHandle): Promise<void> {
   if (sharedStorageOrigin() || !doc.docId || !isRealHandle(handle)) return
-  try { await idbHandle('put', doc.docId, handle) } catch { /* best effort — a lost handle just means tomorrow's picker */ }
+  // Per FILE (docId + name), not per docId — see handleKey (#556).
+  try { await idbHandle('put', handleKey(doc.docId, handle.name), handle) } catch { /* best effort — a lost handle just means tomorrow's picker */ }
 }
 
 /**
@@ -753,22 +763,33 @@ export async function reconnectHandle(doc: KernelDoc): Promise<FsFileHandle | nu
   // the planted-entry path. Real, isolated origins reconnect as normal.
   if (sharedStorageOrigin()) return null
   if (!doc.docId) return null
-  let stored: unknown
-  try { stored = await idbHandle('get', doc.docId) } catch { return null }
-  if (!isRealHandle(stored)) return null // absent, or a host polyfill handle
-  // the remembered handle must be the file on screen: docId + name. isSameEntry
-  // needs a second handle we do not have on a bare file:// reopen, so the name
-  // check is the guard.
+  // The remembered handle must be the file ON SCREEN, and the only check we have
+  // on a bare reopen is its NAME (isSameEntry needs a second handle we do not
+  // have). With no name on screen — the hosted app, nothing open — there is
+  // nothing to verify against, so we do NOT reconnect: reading a docId-only entry
+  // unchecked could re-permission a handle to a different file. A real reopen
+  // always has a name.
   const onScreen = openedFileName()
-  if (onScreen && stored.name !== onScreen) return null // mismatch → picker, entry kept
+  if (!onScreen) return null
+  // Primary key is per FILE (docId + name). Fall back to the legacy docId-only
+  // key for entries written before #556 — the name guard below validates it too,
+  // so the fallback is no weaker than the primary.
+  let key = handleKey(doc.docId, onScreen)
+  let stored: unknown
+  try {
+    stored = await idbHandle('get', key)
+    if (!isRealHandle(stored)) { key = doc.docId; stored = await idbHandle('get', key) }
+  } catch { return null }
+  if (!isRealHandle(stored)) return null // absent, or a host polyfill handle
+  if (stored.name !== onScreen) return null // mismatch → picker, entry kept
   try {
     let perm = await stored.queryPermission({ mode: 'readwrite' })
     if (perm !== 'granted') perm = await stored.requestPermission({ mode: 'readwrite' })
     if (perm === 'granted') return stored
-    void idbHandle('delete', doc.docId) // denied → forget it, use the picker
+    void idbHandle('delete', key) // denied → forget it, use the picker
     return null
   } catch { // NotFoundError (file moved/deleted) or any handle failure
-    void idbHandle('delete', doc.docId)
+    void idbHandle('delete', key)
     return null
   }
 }

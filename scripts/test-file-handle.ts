@@ -77,7 +77,7 @@ class FakeFSHandle {
 ;(globalThis as Record<string, unknown>).self = { origin: 'https://bento.page' }
 const ON_SCREEN = 'Q3-board.bento.html'
 
-const { reconnectHandle, consumeLaunchQueue, hasFileHandle, currentFileName, writeUpdatedFile, encodeDocBody, setEncryptionPassword, parseEnvelope, decryptEnvelope, adoptFileHandle, embeddedDocBlock } = await import('../kernel/src/save.ts')
+const { reconnectHandle, persistHandle, consumeLaunchQueue, hasFileHandle, currentFileName, writeUpdatedFile, encodeDocBody, setEncryptionPassword, parseEnvelope, decryptEnvelope, adoptFileHandle, embeddedDocBlock } = await import('../kernel/src/save.ts')
 const DOC = { docId: 'd1', title: 'Q3' }
 const reset = () => store.clear()
 const has = () => store.has('d1')
@@ -137,6 +137,62 @@ const settle = () => new Promise((r) => setTimeout(r, 10))
 {
   reset()
   ok((await reconnectHandle(DOC as never)) === null, 'no stored handle → null (first-ever save picks)')
+}
+
+// 7b. #556 — "Save a copy…" must not evict the original's remembered handle.
+// A copy shares the original's docId, so a docId-only key let the copy's save
+// overwrite the original's entry; reopening the original then fell to the picker.
+// Drive the REAL persist→reconnect cycle (per-file keying), both reopen orders.
+// At an original web origin, each file lives at its own URL, so openedFileName()
+// (location basename here) is how "which file is on screen" is set.
+{
+  const atFile = (name: string) => {
+    ;(globalThis as Record<string, unknown>).location = { href: `https://bento.page/${name}`, protocol: 'https:', origin: 'https://bento.page' }
+  }
+  reset()
+  const original = new FakeFSHandle('Q3-board.bento.html', { q: 'granted' })
+  const copy = new FakeFSHandle('Q3-copy.bento.html', { q: 'granted' })
+  // save the original, then Save a copy… (same docId d1, different file)
+  atFile('Q3-board.bento.html'); await persistHandle(DOC as never, original as never)
+  atFile('Q3-copy.bento.html'); await persistHandle(DOC as never, copy as never)
+  ok(store.size === 2, 'the copy gets its OWN entry — it does not evict the original (two files, two handles)')
+  // reopen the ORIGINAL
+  atFile('Q3-board.bento.html')
+  ok((await reconnectHandle(DOC as never)) === (original as never),
+    'reopening the original reconnects the original\'s handle (no picker) — the #556 fix')
+  // reopen the COPY
+  atFile('Q3-copy.bento.html')
+  ok((await reconnectHandle(DOC as never)) === (copy as never),
+    'reopening the copy reconnects the copy\'s handle')
+  ;(globalThis as Record<string, unknown>).location = { href: 'https://bento.page/Q3-board.bento.html', protocol: 'https:', origin: 'https://bento.page' }
+}
+// 7c. a legacy docId-only entry (written before #556) still reconnects, via the
+// fallback, and is still name-checked.
+{
+  reset()
+  const legacy = new FakeFSHandle(ON_SCREEN, { q: 'granted' })
+  store.set('d1', legacy) // the pre-#556 key: docId alone
+  ok((await reconnectHandle(DOC as never)) === (legacy as never),
+    'a legacy docId-only entry reconnects through the fallback')
+  reset()
+  const legacyWrong = new FakeFSHandle('Other.bento.html', { q: 'granted' })
+  store.set('d1', legacyWrong)
+  ok((await reconnectHandle(DOC as never)) === null,
+    'and a legacy entry whose name is not the file on screen is still rejected (name guard holds on the fallback)')
+}
+
+// 7d. #556 edge (security): with NO file name on screen (the hosted app, nothing
+// open — openedFileName() is null), a docId-only entry must NOT reconnect: there
+// is no name to verify it against, and a real reopen always has one.
+{
+  reset()
+  ;(globalThis as Record<string, unknown>).location = { href: 'https://bento.page/', protocol: 'https:', origin: 'https://bento.page' } // no .bento.html basename → openedFileName() === null
+  const h = new FakeFSHandle('anything.bento.html', { q: 'granted' })
+  store.set('d1', h) // a legacy docId-only entry
+  ok((await reconnectHandle(DOC as never)) === null, 'with no file name on screen, a docId-only entry is not reconnected (no name to check → picker)')
+  ok(h.queryCalls === 0 && h.requestCalls === 0, 'and its permission is never touched')
+  ok(store.has('d1'), 'the entry is kept (not proven stale)')
+  ;(globalThis as Record<string, unknown>).location = { href: 'https://bento.page/Q3-board.bento.html', protocol: 'https:', origin: 'https://bento.page' }
 }
 
 // 8. SHARED file:// ORIGIN: persistence off, and a planted entry is never used.
