@@ -143,10 +143,19 @@ export type FieldClass = 'content' | 'identity' | 'mode' | 'capability' | 'histo
  *  copy). The rest are copies handed to someone else. */
 export type Tier =
   | 'file' | 'duplicate' | 'invite' | 'reader' | 'audience'
-  | 'package' | 'link' | 'template' | 'copyJSON'
+  | 'package' | 'link' | 'template' | 'copyJSON' | 'merge'
 
 export const TIERS: readonly Tier[] =
-  ['file', 'duplicate', 'invite', 'reader', 'audience', 'package', 'link', 'template', 'copyJSON']
+  ['file', 'duplicate', 'invite', 'reader', 'audience', 'package', 'link', 'template', 'copyJSON', 'merge']
+
+/** The 'merge' tier: one complete document per recipient (type's mail merge) —
+ *  a file for SOMEONE ELSE, so content is kept, identity is reset (a fresh
+ *  docId, minted by the builder after projection), and capability, history,
+ *  modes (readonly/template) and unknown keys are all dropped. Distinct from
+ *  'duplicate' (keeps history, re-mints owner creds) and 'copyJSON' (keeps the
+ *  docId). NOTE: projectForCopy does NOT recurse into embedded documents, so a
+ *  caller that merges a doc carrying embeds must pre-strip them
+ *  (withoutEmbeddedCaps/withoutCaps) exactly as the other export tiers do. */
 
 /** What a copy does with one field in one tier.
  *  - keep:   copy the live value as-is.
@@ -182,25 +191,25 @@ export const CLASS_RULES: {
 } = {
   content: {
     file: 'keep', duplicate: 'keep', invite: 'keep', reader: 'keep', audience: 'keep',
-    package: 'keep', link: 'keep', template: 'keep', copyJSON: 'keep',
+    package: 'keep', link: 'keep', template: 'keep', copyJSON: 'keep', merge: 'keep',
   },
   identity: {
     file: 'keep', duplicate: 'reset', invite: 'keep', reader: 'keep', audience: 'keep',
-    package: 'keep', link: 'keep', template: 'keep', copyJSON: 'keep',
+    package: 'keep', link: 'keep', template: 'keep', copyJSON: 'keep', merge: 'reset',
   },
   mode: {
     file: 'per-field', duplicate: 'per-field', invite: 'per-field', reader: 'per-field',
     audience: 'per-field', package: 'per-field', link: 'per-field', template: 'per-field',
-    copyJSON: 'per-field',
+    copyJSON: 'per-field', merge: 'per-field',
   },
   capability: {
     file: 'keep', duplicate: 'reset', invite: { allowlist: 'invite' }, reader: { allowlist: 'reader' },
     audience: { allowlist: 'audience' }, package: 'drop', link: { allowlist: 'reader' },
-    template: 'drop', copyJSON: 'drop',
+    template: 'drop', copyJSON: 'drop', merge: 'drop',
   },
   history: {
     file: 'keep', duplicate: 'keep', invite: 'keep', reader: 'drop', audience: 'drop',
-    package: 'drop', link: 'drop', template: 'drop', copyJSON: 'drop',
+    package: 'drop', link: 'drop', template: 'drop', copyJSON: 'drop', merge: 'drop',
   },
 }
 
@@ -215,7 +224,7 @@ export const MODE_FIELD_RULES = {
   // read-only.
   readonly: {
     file: 'keep', duplicate: 'keep', invite: 'drop', reader: { set: true }, audience: { set: true },
-    package: { set: true }, link: { set: true }, template: 'drop', copyJSON: 'drop',
+    package: { set: true }, link: { set: true }, template: 'drop', copyJSON: 'drop', merge: 'drop',
   },
   // template is kept ONLY by the owner's own round-trips and set by the template
   // copy. parseDoc treats template:true as "this open IS a new document" (fresh
@@ -224,7 +233,7 @@ export const MODE_FIELD_RULES = {
   // and silently loses the room.
   template: {
     file: 'keep', duplicate: 'keep', invite: 'drop', reader: 'drop', audience: 'drop',
-    package: 'drop', link: 'drop', template: { set: true }, copyJSON: 'drop',
+    package: 'drop', link: 'drop', template: { set: true }, copyJSON: 'drop', merge: 'drop',
   },
 } satisfies Record<string, Record<Tier, Rule>>
 
@@ -238,7 +247,7 @@ export type ModeField = keyof typeof MODE_FIELD_RULES
  *  not ride it). This is the fail-closed default for anything not in the map. */
 const UNKNOWN_RULE: Record<Tier, Rule> = {
   file: 'keep', duplicate: 'keep', invite: 'drop', reader: 'drop', audience: 'drop',
-  package: 'drop', link: 'drop', template: 'drop', copyJSON: 'drop',
+  package: 'drop', link: 'drop', template: 'drop', copyJSON: 'drop', merge: 'drop',
 }
 
 /** Extract the field names an app's class map assigns to class C. */
