@@ -11,6 +11,12 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **Pasting onto another slide keeps the position.** Copy a logo, a header or
+  any element and paste it onto a different slide, and it lands exactly where
+  it was. It steps down and right only when it would cover the same element
+  (pasting onto the slide you copied from, or pasting twice), so repeated
+  pastes still fan out. Reported in #569.
+
 ## [1.2.7] — 2026-10-11
 
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a
