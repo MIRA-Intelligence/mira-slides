@@ -2370,6 +2370,11 @@ jobs:
         # restores; paste moves it to the pointer in one undo step, across
         # slides, without two elements sharing an id on one slide.
         run: node scripts/test-slides-ghost-cut-browser.mjs
+      - name: Leaving an inline code run in Chromium
+        # A text box that already ends a line in `code` (reopened, pasted):
+        # typing at the end of that line is plain text, at the box's end or
+        # before a line break; opening and closing a box changes nothing.
+        run: node scripts/test-slides-code-run-exit-browser.mjs
 
   spaces-save-browser:
     runs-on: ubuntu-latest

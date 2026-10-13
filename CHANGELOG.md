@@ -11,6 +11,12 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **Typing after inline code at the end of a line is plain text again.** In a
+  text box that already ended a line with `code` — one you saved and reopened,
+  or pasted — the caret could only sit inside the code, so everything typed at
+  the end of that line became code too, and no key got you out. Reported in
+  discussion #626.
+
 ## [1.2.7] — 2026-10-11
 
 - **One page for PowerPoint, in and out: bento.page/convert.** Drop a
