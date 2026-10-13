@@ -2796,7 +2796,10 @@ export class Editor {
       ? `${this.store.doc.title} — ${file}`
       : `${this.store.doc.title} — ${appConfig().appName}`
     if (!this.fileChip) return
-    this.fileChip.hidden = !named
+    // out of the bar only until there IS a file; after that the chip keeps its
+    // slot and goes quiet when it would repeat the title (styles.css, #546)
+    this.fileChip.hidden = !file
+    this.fileChip.classList.toggle('ed-filechip-quiet', !named)
     if (!file) return
     this.fileChip.textContent = fileBase(file)
     // Three states, because two would lie: with the API but no handle yet, ⌘S
@@ -3078,21 +3081,23 @@ export class Editor {
   }
 
   private savedTimer = 0
-  private savedHideTimer = 0
   private flashSaved(message = t('Saved')) {
-    let tag = document.querySelector<HTMLElement>('.ed-autosaved')
-    if (!tag) { tag = div('ed-autosaved'); document.querySelector('.ed-topbar .ed-title')?.after(tag) }
+    const title = document.querySelector<HTMLElement>('.ed-topbar .ed-title')
+    const bar = title?.parentElement
+    if (!title || !bar) return
+    let tag = bar.querySelector<HTMLElement>(':scope > .ed-autosaved')
+    if (!tag) { tag = div('ed-autosaved'); bar.appendChild(tag) }
     tag.textContent = message
-    // hidden while idle: at opacity 0 the tag still held its width, so after
-    // the first backup the title permanently lost the space this text needs
-    tag.hidden = false
+    // An overlay at the title's right end, never a slot in the bar: as a flex
+    // item it shifted Undo/Redo on every auto-save and clicks landed on Redo
+    // (#546). Offsets are in the bar's content coordinates, so it rides along
+    // when a too-narrow bar is scrolled.
+    tag.style.left = `${Math.max(title.offsetLeft, title.offsetLeft + title.offsetWidth - tag.offsetWidth - 6)}px`
+    tag.style.top = `${title.offsetTop + (title.offsetHeight - tag.offsetHeight) / 2}px`
     void tag.offsetWidth // paint a frame at opacity 0 so the fade-in runs
     tag.classList.add('show')
     clearTimeout(this.savedTimer)
-    clearTimeout(this.savedHideTimer)
     this.savedTimer = window.setTimeout(() => tag!.classList.remove('show'), 1400)
-    // leave layout only after the 0.25s fade-out has finished
-    this.savedHideTimer = window.setTimeout(() => { tag!.hidden = true }, 1700)
   }
 
   async save(forcePicker: boolean) {

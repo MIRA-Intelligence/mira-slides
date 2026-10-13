@@ -222,6 +222,10 @@ option { background: var(--field); color: var(--ink); }
   cursor: default;
 }
 .ed-filechip[hidden] { display: none; }
+/* Known file, but its name would only repeat the title: keep the SLOT and
+   hide the text. Toggling display here reflowed the bar whenever an undo or a
+   rename made the title match the file name (#546). */
+.ed-filechip.ed-filechip-quiet { visibility: hidden; }
 .ed-topbar.ed-bar-compact .ed-filechip { display: none; }
 
 /* unsaved-changes dot — badges the SAVE button's corner (amber when dirty) */
@@ -581,13 +585,23 @@ a.ed-btn { text-decoration: none; }  /* the update block's "What's new" link is 
    which would otherwise win and leave a shadowed element unfaded. */
 .ed-stage .bento-el-ghost-cut { filter: opacity(.35) !important; pointer-events: none; }
 .ed-stage .bento-editing { cursor: text; }
+/* The caret at the start of a line sits on the text box's left edge — text
+   starts flush with the element, and its geometry is the model's, so the text
+   cannot move. Everything drawn ON that edge hid the caret (#547): the ring
+   (a 1.5px shadow hugging it), the browser's focus outline, and Moveable's
+   left line, still drawn from the last selection though it has no target
+   while you edit. So the ring is an outline held 3px OUT, replacing the focus
+   outline, and the idle control box is hidden for the edit. */
 .ed-stage .bento-editing .bento-text-inner {
   cursor: text;
   user-select: text;
-  box-shadow: 0 0 0 1.5px var(--blue);
+  outline: 1.5px solid var(--blue);
+  outline-offset: 3px;
   background: rgb(91 141 239 / 0.06);
   min-height: 1em;
 }
+/* !important: Moveable writes display/visibility inline (as .ed-reader does) */
+.ed-stage-scale:has(.bento-editing) .moveable-control-box { visibility: hidden !important; }
 
 /* ————— properties panel ————— */
 
@@ -1121,13 +1135,22 @@ a.ed-btn { text-decoration: none; }  /* the update block's "What's new" link is 
   max-width: min(92vw, 560px);
 }
 .ed-recover .ed-btn { padding: 5px 12px; }
+/* "Saved" / "Backed up in this browser" OVERLAYS the end of the deck title
+   (editor.ts flashSaved places it) instead of taking a slot in the bar. As a
+   flex item it pushed everything after it sideways on every auto-save, so the
+   Undo button moved under a pointer mid-click and the click landed on Redo
+   (#546). Inside the bar's own box, because at the narrowest widths the bar
+   is a scroll container and anything outside it would be clipped. */
+.ed-topbar { position: relative; }
 .ed-autosaved {
+  position: absolute;
   font-size: 11px;
-  color: #6f8; /* set by theme below */
   color: var(--muted);
+  background: var(--surface);
+  padding: 1px 4px;
+  border-radius: 4px;
   opacity: 0;
   transition: opacity 0.25s;
-  align-self: center;
   white-space: nowrap;
   pointer-events: none;
 }
