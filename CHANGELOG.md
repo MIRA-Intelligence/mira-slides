@@ -11,6 +11,32 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **Indent and outdent bullets.** While editing text, Tab moves the bullet
+  under the caret one level deeper, beneath the one above it, and Shift+Tab
+  moves it back up; select several lines to move them together. This works on
+  lists and on bullets you type with "- ". The Typography panel has matching
+  Outdent and Indent buttons; with nothing open for editing they apply to the
+  whole text box. Tab anywhere else does what it did before. Asked for in
+  discussion #368.
+- **Typing after inline code at the end of a line is plain text again.** In a
+  text box that already ended a line with `code` — one you saved and reopened,
+  or pasted — the caret could only sit inside the code, so everything typed at
+  the end of that line became code too, and no key got you out. Reported in
+  discussion #626.
+- **Connectors in decks written outside the editor now attach.** A deck made
+  by hand or by an AI agent can name the two elements a connector joins
+  without giving it the right endpoints. Until now only the slide on screen was
+  ever re-routed, and only after an edit, so a connector on any other slide sat
+  wherever the file put it — in the thumbnails, the slideshow and the PDF. Every
+  slide's connectors now land on their elements' borders as the deck opens, or
+  is replaced from JSON. Doing so is not an edit: the deck is not marked unsaved
+  and there is nothing to undo. (#493)
+- **A table with rounded corners no longer hides rows.** When a rounded
+  table's rows needed more height than its box, the rows past the bottom were
+  cut off with nothing to say so. They now show, as they always did for a table
+  without rounded corners, and the corners sit on the table's real bottom.
+  Checking a deck (`bento check`, `validate()`) reports a new `table-overflow`
+  warning with how many pixels the box is short. Reported in #494.
 - **The text cursor shows at the start of a line.** While editing a text
   box, the cursor at the very beginning of a line was hidden under the blue
   editing frame and the selection box's edge. The frame now sits a few pixels

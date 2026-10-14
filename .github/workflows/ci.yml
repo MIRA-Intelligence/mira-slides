@@ -2374,6 +2374,11 @@ jobs:
         # range across a parent copies parents only, never its states; plural
         # and singular toasts.
         run: node scripts/test-slides-copy-slides-browser.mjs
+      - name: Rounded tables in Chromium
+        # A rounded table whose rows outgrow its box shows its last row (#494),
+        # keeps rounded corners on its real bottom, and a short one still
+        # fills its box; tables without a radius are unchanged.
+        run: node scripts/test-slides-table-radius-browser.mjs
       - name: Paste position in Chromium
         # ⌘C then ⌘V onto another slide keeps the element's position; onto the
         # source slide it steps +20 and cascades (#569).
@@ -2389,6 +2394,22 @@ jobs:
         # restores; paste moves it to the pointer in one undo step, across
         # slides, without two elements sharing an id on one slide.
         run: node scripts/test-slides-ghost-cut-browser.mjs
+      - name: Bullet indent in Chromium
+        # Tab / Shift+Tab nest and un-nest list items (and typed bullets) while
+        # editing, with the caret kept and ⌘Z right after; the panel's Indent /
+        # Outdent do the same; committed, one undo step; Tab outside a list —
+        # a plain box, a table cell — is unchanged.
+        run: node scripts/test-slides-bullet-indent-browser.mjs
+      - name: Leaving an inline code run in Chromium
+        # A text box that already ends a line in `code` (reopened, pasted):
+        # typing at the end of that line is plain text, at the box's end or
+        # before a line break; opening and closing a box changes nothing.
+        run: node scripts/test-slides-code-run-exit-browser.mjs
+      - name: Connectors route on every slide in Chromium
+        # #493: a deck saved or loaded with stale connector endpoints opens with
+        # every slide's connectors on their elements' borders (thumbnail too),
+        # without dirtying the deck or making an undo step.
+        run: node scripts/test-slides-connectors-browser.mjs
       - name: Caret at the start of a line in Chromium
         # #547: with the caret at a text box's left edge, nothing paints over
         # it — the editing ring is an outline held off the box, Moveable's
