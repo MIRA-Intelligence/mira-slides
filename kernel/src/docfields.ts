@@ -36,6 +36,106 @@ export function keepLiveIdentity(restored: Obj, live: Obj): void {
   }
 }
 
+// --- whole-document restore: undo / redo / version restore / crash recovery ---
+// The class-driven generalisation of keepLiveIdentity. keepLiveIdentity pins a
+// hard-coded identity list live; applyRestore decides PER FIELD from its class,
+// with per-field overrides, because a field's COPY class and its RESTORE
+// behaviour can diverge (type's comments are class 'history' for copy reasons
+// but must be undoable/restorable). It is additive: apps keep keepLiveIdentity
+// until they adopt this.
+
+/** How a field behaves under undo/redo and whole-document restore.
+ *  - 'follows': take the restored / incoming value, like ordinary content.
+ *  - 'live':    keep the LIVE value; the restored value is ignored. */
+export type KeepLive = 'live' | 'follows'
+
+/** Default by class: content (and an unknown field) FOLLOWS; identity,
+ *  capability, mode and history stay LIVE — a restore never rolls back identity
+ *  or modes, and history is file-local bookkeeping a version restore must not
+ *  discard. Apps override per field (type's comments → 'follows'). */
+export function defaultKeepLive(cls: FieldClass | undefined): KeepLive {
+  return cls === undefined || cls === 'content' ? 'follows' : 'live'
+}
+
+/** Which way a restore goes.
+ *  - 'back':    undo/redo and version restore — going BACK in time. A 'live'
+ *               field keeps the live value (identity and history don't roll back).
+ *  - 'recover': crash recovery — `incoming` is a NEWER copy of THIS document.
+ *               A 'live' HISTORY field is reconciled with it (a revision made
+ *               just before the crash must survive), the rest still keep live. */
+export type RestoreDirection = 'back' | 'recover'
+
+/** A per-field recover hook: given the live value, the incoming value and the
+ *  two whole-doc timestamps, return the value to keep. Consulted ONLY for a
+ *  'live' history field under direction 'recover'. */
+export type RecoverHook = (
+  live: unknown, incoming: unknown, at: { live?: string; incoming?: string },
+) => unknown
+
+export interface RestoreRules {
+  readonly classes: Record<string, FieldClass>
+  /** Per-field keep-live override, beside the class default (e.g. comments
+   *  'follows' though class history). */
+  readonly keepLive?: Readonly<Record<string, KeepLive>>
+  /** Per-field recover hook — used only for a 'live' history field on 'recover'.
+   *  A field with no hook follows incoming when present, keeps live when absent. */
+  readonly recover?: Readonly<Record<string, RecoverHook>>
+}
+
+/** Resolve a whole-document restore and return the doc to INSTALL.
+ *  Over the union of live + incoming keys:
+ *   - a 'follows' field takes `incoming` ('back': absent means dropped; 'recover':
+ *     an absent key never wipes a live value — a snapshot may be a projection);
+ *   - a 'live' field keeps the live value, EXCEPT a 'live' history field on
+ *     'recover', which uses its recover hook, or (no hook) follows incoming when
+ *     present and keeps live when absent.
+ *  `at` carries the whole-doc timestamps (live.modified vs the snapshot's time),
+ *  passed to recover hooks; it is not otherwise inspected here. */
+export function applyRestore<T extends object>(
+  live: T, incoming: T, direction: RestoreDirection, rules: RestoreRules,
+  at: { live?: string; incoming?: string } = {},
+): T {
+  const L = live as Obj, I = incoming as Obj
+  const out: Obj = {}
+  for (const k of new Set([...Object.keys(L), ...Object.keys(I)])) {
+    const cls = rules.classes[k]
+    const kl = rules.keepLive?.[k] ?? defaultKeepLive(cls)
+    if (kl === 'follows') {
+      if (I[k] !== undefined) out[k] = I[k]
+      else if (direction === 'recover' && L[k] !== undefined) out[k] = L[k] // absent never wipes on recover
+      continue
+    }
+    // 'live'
+    if (direction === 'recover' && cls === 'history') {
+      const hook = rules.recover?.[k]
+      if (hook) { const v = hook(L[k], I[k], at); if (v !== undefined) out[k] = v; continue }
+      if (I[k] !== undefined) out[k] = I[k]
+      else if (L[k] !== undefined) out[k] = L[k] // absent never wipes a history field on recover
+      continue
+    }
+    if (L[k] !== undefined) out[k] = L[k]
+  }
+  return out as T
+}
+
+/** A recover hook for a revision-style list: keep whichever whole list holds the
+ *  most recent entry (by its `at`), ties to LIVE; the lists are NEVER merged, so
+ *  a signer's trim survives. OPTIONAL and for an UNSIGNED list only — a SIGNED
+ *  list must use the default (follow incoming), because a tie can otherwise pair
+ *  a signature with history it never signed (bento/type's finding). */
+export const newestListWins: RecoverHook = (live, incoming) => {
+  const newest = (x: unknown): string =>
+    Array.isArray(x) ? x.reduce<string>((m, e) => {
+      const a = (e as { at?: unknown })?.at
+      return typeof a === 'string' && a > m ? a : m
+    }, '') : ''
+  const lv = Array.isArray(live) ? live : undefined
+  const iv = Array.isArray(incoming) ? incoming : undefined
+  if (!iv) return lv
+  if (!lv) return iv
+  return newest(iv) > newest(lv) ? iv : lv // tie → live
+}
+
 // --- capabilities / secrets (stripped on export) ----------------------------
 
 /** Top-level fields that carry a write/owner capability or secret. A copy that
