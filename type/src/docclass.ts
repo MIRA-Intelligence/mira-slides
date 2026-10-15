@@ -54,17 +54,16 @@ export const TYPE_FIELDS = {
   //               negotiated away is exactly what a view-only recipient must
   //               not receive.
   //   comments    internal discussion of the text, not the text.
-  //   signatures  HISTORY, not content, for now. Signatures cover content AND
-  //               revisions, and a reader copy drops revisions, so a kept
-  //               signature would read "changed" in every reader copy — which
-  //               trains a reader to ignore a red ✗ and hides a real tamper
-  //               the day one happens. Dropped until canon signs a commitment
-  //               to the history rather than the history itself, which a
-  //               reader copy could carry and verify; then this becomes content.
+  //   historySalt the secret that makes each signature's history commitment
+  //               reveal nothing (canon.ts). Kept with the full history ONLY.
   revisions: 'history',
   comments: 'history',
-  signatures: 'history',
+  historySalt: 'history',
   // content — the document itself
+  //   signatures  content: each signs the content plus a salted COMMITMENT to
+  //               the history (canon.ts v2), so a view-only copy — no revisions,
+  //               no salt — still verifies them, and they travel with it.
+  signatures: 'content',
   format: 'content',
   version: 'content',
   title: 'content',

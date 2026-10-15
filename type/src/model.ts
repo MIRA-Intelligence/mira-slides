@@ -225,8 +225,12 @@ export interface Signature {
   pub: string;
   /** self-asserted, shown beside the signature and NOT proof of anything */
   name: string;
-  /** digest of the canonical content at the moment of signing */
+  /** digest of the canonical CONTENT at the moment of signing (canon.ts SIGNED_EXCLUDE) */
   content: string;
+  /** salted commitment to the history at the moment of signing (canon.ts
+   *  historyCommitment). Reveals nothing about the revisions without the
+   *  document's historySalt, so it travels in view-only copies. */
+  history: string;
   /** the signature this one commits to, chaining the order */
   prev: string;
   sig: string;
@@ -325,6 +329,9 @@ export interface TypeDoc {
    */
   optical?: boolean;
   revisions: Revision[];
+  /** 128-bit, base64url. Salts the history commitment every signature carries.
+   *  Minted at first sign, NEVER rotated, never synced (canon.ts newHistorySalt). */
+  historySalt?: string;
   signatures: Signature[];
   /**
    * Is the document recording edits as tracked changes?
@@ -794,6 +801,10 @@ export function parseDoc(raw: string): ParseResult {
     signatures: Array.isArray(json.signatures) ? json.signatures as Signature[] : [],
   };
   if (Object.keys(styles).length) doc.styles = styles; else delete doc.styles;
+  // A salt is 16 bytes, base64url without padding: exactly 22 characters. Anything
+  // else is not a salt — dropped, so its signatures report the history MISSING
+  // rather than being checked against something that only looks like a salt.
+  if (typeof json.historySalt !== 'string' || !/^[A-Za-z0-9_-]{22}$/.test(json.historySalt)) delete doc.historySalt;
   // only `false` is a value; anything else — including a junk one — is the default
   if (json.optical === false) doc.optical = false; else delete doc.optical;
   if (typeof json.docId !== 'string' || !json.docId) repaired.push('minted a missing docId');
