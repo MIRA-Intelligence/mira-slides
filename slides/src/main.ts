@@ -41,10 +41,12 @@ import { onlineTransport, startSharing, stopSharing, disconnectOnline, joinFromD
 
 // Tell the kernel who this app is — must precede any kernel module use
 // (window title suffix, save-picker label, update manifest + its `app` check).
+// MIRA fork: own identity, and no release channel (an empty manifestUrl turns
+// the update check off) so a MIRA deck is never offered an upstream Bento shell.
 configureApp({
-  appId: 'bento-slides',
-  appName: 'bento/slides',
-  manifestUrl: 'https://bento.page/releases/slides/manifest.json',
+  appId: 'mira-slides',
+  appName: 'mira/slides',
+  manifestUrl: '',
 })
 
 // Every save writes a static rendering of page one into the shell, so file
