@@ -250,6 +250,25 @@ export async function getRecovery(docId: string): Promise<Snapshot | null> {
   return (await tx<Snapshot>(RECOVERY, 'readonly', (s) => s.get(docId))) ?? null
 }
 
+/** Does the recovery snapshot look OLDER than the file now open? A SIGNAL for
+ *  the app's banner, never a reason to HIDE the offer (maintainer ruling,
+ *  2026-10-15): the banner warns ("This recovered copy looks older than the
+ *  file. Restore anyway?") and keeping the file is the default, but the snapshot
+ *  is always offered. The two times come from different clocks — `snap.at` is
+ *  this device's ms (`Date.now()`), `doc.modified` is whichever device last
+ *  saved (an ISO string) — so a false "older" under skew must only soften copy,
+ *  never suppress. Returns true ONLY when both times are known and the snapshot
+ *  is the older; unknown either side → false (say nothing). */
+export function recoveryLooksOlder(snap: Snapshot, doc: { modified?: string | number }): boolean {
+  const ms = (t: string | number | undefined): number | undefined => {
+    if (typeof t === 'number') return Number.isFinite(t) ? t : undefined
+    if (typeof t === 'string') { const n = Date.parse(t); return Number.isNaN(n) ? undefined : n }
+    return undefined
+  }
+  const s = ms(snap.at), m = ms(doc.modified)
+  return s !== undefined && m !== undefined && s < m
+}
+
 export async function clearRecovery(docId: string): Promise<void> {
   const ds = docStore()
   if (ds) {
