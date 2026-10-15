@@ -105,6 +105,12 @@ jobs:
         # ⌘S, auto-save and Update this file all write through the queue.
         run: node scripts/test-slides-save-revisions.ts
 
+      - name: Slides count-up number rig
+        # #584 ruling: a single dot is a decimal point (12.500), only a
+        # well-formed group with two or more separators is thousands
+        # (1.250.000 settles as authored and counts up grouped).
+        run: node scripts/test-slides-countup-number.ts
+
       - name: Typecheck kernel (standalone)
         # Apps also typecheck kernel transitively through their imports; this
         # catches kernel-only errors under the kernel's own flags. It ALSO
