@@ -183,6 +183,8 @@ H('a recovery snapshot with NO signatures never pairs its revisions with the liv
   live.revisions = [{ id: 'r1', at: '2026-01-01T00:00:00.000Z', label: 'Revision 1',
                       body: JSON.parse(JSON.stringify(live.body)) }]
   live.signatures = [{ alg: 'ES256', pub: 'P', name: 'Bob', content: 'C', prev: '', sig: 'S' } as any]
+  ok(live.signatures.length === 1 && live.signatures[0].name === 'Bob',
+    'the FILE really is signed (Bob) — so "no signatures after restore" is a result, not a fixture')
 
   // The crashed session held a NEWER revision and no signatures at all — and
   // its JSON lacks the key entirely, not just an empty list.
