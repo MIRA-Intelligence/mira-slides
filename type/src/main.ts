@@ -938,7 +938,10 @@ async function save(forcePicker = false) {
   // document's OWN collab is kept — it is this file's.
   const result = await saveFile(withoutEmbeddedCaps(store.doc), forcePicker);
   if (result === 'cancelled') return;
-  dirty = false;
+  // Clear the dot only for a save of THIS file. 'copied' ("Save a copy…") wrote a
+  // DIFFERENT file, so the open document is still unsaved — keep dirty set (and
+  // paintTitle then shows the unsaved state, not a false "Saved to …").
+  if (result === 'saved' || result === 'saved-as' || result === 'downloaded') dirty = false;
   paintTitle();
 }
 

@@ -23,6 +23,8 @@
 //      the document EXACTLY (byte-for-byte JSON) and lands as ONE undo step
 //      — never a silent, un-undoable swap of the document under the author.
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { configureApp } from '../kernel/src/app.ts'
 import { setEncryptionPassword } from '../kernel/src/save.ts'
 import { docContentKey, canSnapshot } from '../type/src/autosave.ts'
@@ -163,6 +165,22 @@ H('THE CRASH CASE: sign, crash before the file is written, reload')
   const quiet = gateRestored(JSON.stringify(churn), live)
   ok(quiet !== null && docContentKey(quiet) === docContentKey(live),
     'a snapshot differing only in modified offers nothing — no banner on every reload')
+}
+
+H('Save a copy… (a \'copied\' result) must not clear the dot (asserted at source)')
+{
+  // type's save() is module-level and DOM-bound, so this is pinned at source
+  // like the kernel's saveFile ordering. "Save a copy…" returns 'copied'; the
+  // open document is still unsaved, so dirty must stay set and paintTitle must
+  // not claim "Saved". Mutation: clearing dirty for any non-'cancelled' result
+  // (the old `dirty = false`) reds this.
+  const src = readFileSync(fileURLToPath(new URL('../type/src/main.ts', import.meta.url)), 'utf8')
+  const save = src.slice(src.indexOf('async function save('), src.indexOf('async function save(') + 1200)
+  ok(/if \(result === 'cancelled'\) return;/.test(save), 'save() returns early on cancelled')
+  ok(/if \(result === 'saved' \|\| result === 'saved-as' \|\| result === 'downloaded'\) dirty = false;/.test(save),
+    'save() clears dirty ONLY for saved / saved-as / downloaded — never for a copy')
+  ok(!/if \(result === 'cancelled'\) return;\s*dirty = false;/.test(save),
+    'and never clears dirty unconditionally after the cancelled guard')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)
