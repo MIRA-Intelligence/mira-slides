@@ -10346,3 +10346,73 @@ Mutations, all red by exit code:
 
 Naming a content key, an identity key, or a misspelled key in `syncHistory`
 fails tsc.
+
+
+## 2026-10-15 — bento/type signatures v2: content plus a salted commitment to the history
+
+Maintainer ruling (3), 2026-10-15. A type signature signs the document's
+CONTENT plus a COMMITMENT to its history, not the history itself. A view-only
+copy carries the commitment and no drafts, and its signatures verify. This is a
+pre-release format change: bento/type was unreleased, so v2 replaces v1 and no
+v1 signature exists to honour.
+
+Signed text:
+
+    bento-type-sig.v2|<docId>|<content digest>|<history commitment>|<prev sig or "">|<name>
+
+**What the content digest covers.** Every top-level field except the volatile
+set (`modified`, `sync`, `collab`, `preview`, `signatures`, `autosave`) and
+every field the class map classes history, capability or mode. That exclusion
+is DERIVED from `TYPE_FIELDS`, never hand-listed. Today the digest covers
+format, version, docId, title, subtitle, meta, page, body, footnotes, layout,
+styles, type, optical, track, merge, fonts and assets, plus any undeclared field
+(the exclude list fails safe). `scripts/test-type-canon.ts` derives the same
+list from the map and checks that each field moves the digest and each excluded
+one does not. Mode is excluded because a view-only copy SETS `readonly: true`;
+were it signed, every view-only copy would read "changed". Comments are history
+and outside the signature: a comment's author is a self-asserted name and
+signing never attested it.
+
+**The commitment.**
+
+    sha256("bento-type-history.v1" || historySalt || canonical(revisions))
+
+- `historySalt` is 16 random bytes per document, carried as 22 base64url
+  characters. It is minted at first sign, NEVER rotated (that would orphan
+  every signature), and classed history, so it is kept with the full history
+  only: dropped from view-only copies, Copy JSON and mail merge, and never
+  synced.
+- Revision ids carry only 32 bits (`uid()` keeps 8 hex characters of a UUID),
+  and timestamps are guessable. Without the salt, a commitment travelling in a
+  view-only copy would let someone who suspects a small edit brute-force the
+  earlier draft.
+- The domain tag stops cross-protocol reuse.
+- Salts are per-replica by design, because history does not sync. Two
+  replicas' commitments differ even for similar histories.
+
+**Verification reports two things, never folded into one.**
+
+- **Attestation:** the signature is valid and the content is what was signed.
+  It works anywhere, including a view-only copy.
+- **History:** what the commitment says about the history this copy holds:
+  - `matches`;
+  - `changed`, e.g. a Snapshot taken after signing, or a re-sign after a trim
+    (expected in that case, and the UI must say a trim does this);
+  - `missing`, a WARNING for an editable document that lost its revisions or
+    salt. Otherwise deleting `revisions` would turn "changed" into a neutral
+    grey;
+  - `not-included`, neutral, only for a read-only copy, which never carries
+    history.
+
+A forged commitment is not a history state: it is in the signed text, so it
+breaks the attestation.
+
+Signatures are therefore CONTENT again (classed history only as an interim, so
+they could leave view-only copies). They now sync as content and travel in
+view-only copies. Listing them in `syncHistory` became a compile error, which
+removed them from it.
+
+**Open.** How the Signatures panel shows the history state for a signature made
+on ANOTHER replica is a maintainer decision. Its history check would commonly
+read "changed", since each replica keeps its own revisions. Security's input:
+it must never warn on an expected condition.

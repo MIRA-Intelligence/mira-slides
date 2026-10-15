@@ -65,15 +65,14 @@ import type { DocShape } from '../../../kernel/src/sync/crdt.ts';
  *               in the room, readers included, as they did before binding.
  *               Still a whole `comments` register, so the wire is byte-
  *               identical to 1.2.7's and a mixed-version room converges.
- *   signatures  NOT a ruling — this preserves today's behaviour. Signatures
- *               are 'history' only as an interim (they leave view-only copies
- *               until signing commits to the history rather than containing
- *               it); before binding they synced like any other key. Once they
- *               return to 'content', historySyncKeys refuses them here at
- *               COMPILE time, so this line cannot be forgotten.
- * `revisions` never syncs: each replica keeps its own timeline (skipDoc).
+ * Signatures are CONTENT (canon.ts v2 signs a commitment to the history, not the
+ * history), so they sync as content without being named here. They were listed
+ * while they were 'history' as an interim, and historySyncKeys refused them the
+ * moment they became content — at compile time, which is what removed them.
+ * `revisions` and `historySalt` never sync: each replica keeps its own timeline
+ * and its own salt (revisions is skipDoc; historySalt is history, not listed).
  */
-const SYNC_HISTORY = ['comments', 'signatures'] as const;
+const SYNC_HISTORY = ['comments'] as const;
 
 export const TYPE_SHAPE: DocShape = shape('body', null, 'text', ['footnotes'],
   TYPE_FIELDS, historySyncKeys(TYPE_FIELDS, SYNC_HISTORY));

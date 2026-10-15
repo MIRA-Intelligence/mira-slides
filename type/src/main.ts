@@ -24,7 +24,7 @@ import { Editor } from './editor.ts';
 import { paginate, drawPages, type Metrics } from './paginate.ts';
 import { takeSnapshot, startReview } from './redlineview.ts';
 import { printDocument, buildPrintDocument } from './print.ts';
-import { sign as signDoc, verifyChain, newKey } from './canon.ts';
+import { sign as signDoc, verifyChain, newKey, newHistorySalt } from './canon.ts';
 
 // Tell the kernel who this app is — must precede any kernel module use
 // (window title suffix, save-picker label, update manifest).
@@ -823,6 +823,13 @@ document.getElementById('sign')!.addEventListener('click', async () => {
   if (!name) return;
   try { localStorage.setItem('bento-type-name', name); } catch { /* ignore */ }
   const key = await getKey();
+  // The history commitment is salted by the document's own historySalt. The
+  // first signature mints it, in the document, and it is never replaced: every
+  // later signature commits to history under the same salt (canon.ts).
+  if (!store.doc.historySalt) {
+    const salt = newHistorySalt();
+    store.commit(d => { d.historySalt = salt; });
+  }
   const prev = store.doc.signatures[store.doc.signatures.length - 1] ?? null;
   const entry = await signDoc(store.doc, key, { name, prev });
   entry.at = new Date().toISOString();

@@ -31,7 +31,9 @@
 
 import {
   canonicalize, digest, sign, verify, verifyChain, newKey, exportPub, VOLATILE,
+  SIGNED_EXCLUDE, historyCommitment, newHistorySalt,
 } from '../type/src/canon.ts';
+import { TYPE_FIELDS } from '../type/src/docclass.ts';
 
 let checks = 0, failures = 0;
 const ok = (c: boolean, m: string) => {
@@ -45,10 +47,14 @@ const threw = (fn: () => unknown): string | null => {
 
 // A document shaped like the real thing, so the properties are pinned against
 // something a user could actually produce rather than a toy object.
+// v2 signatures commit to the history under the document's own salt, so every
+// fixture carries one — the same salt throughout, as a real document's never
+// rotates. Minted by the real minter, so it is a real 16-byte salt.
+const SALT = newHistorySalt();
 const doc = (over: Record<string, unknown> = {}) => ({
   format: 'bento/type', version: 1, docId: 'doc-1', title: 'Agreement',
   body: [{ id: 'p1', kind: 'para', text: 'The fee is due within 30 days.' }],
-  footnotes: {}, revisions: [], signatures: [], ...over,
+  footnotes: {}, revisions: [], signatures: [], historySalt: SALT, ...over,
 });
 
 // ────────────────────────────────────────────────────────────── 1. determinism
@@ -346,6 +352,109 @@ H('signing again after an edit — the chain reports the past honestly');
   ok(await digest(v2) === b.content,
      'signing digests the document INCLUDING the signature it chains from, because '
      + '`signatures` is volatile and never enters the digest');
+}
+
+// ════════════════════════════════════════════════════════════════════ v2
+// Signatures sign the CONTENT plus a salted COMMITMENT to the history
+// (maintainer ruling 2026-10-15), so a view-only copy — no revisions, no salt,
+// read-only — still verifies. Each row below states one property of that.
+
+H('v2: the content digest covers exactly the content — derived from the class map');
+{
+  // Which fields the digest attests is stated in canon.ts in prose; this is the
+  // same statement made by MEASURING. Every content/identity field moves the
+  // digest; every excluded field does not. Derived from TYPE_FIELDS, so a field
+  // classified later is checked without anyone remembering this rig.
+  const base = doc();
+  const d0 = await digest(base);
+  const moves = async (k: string) => d0 !== await digest({ ...base, [k]: { probe: k } });
+  for (const [k, cls] of Object.entries(TYPE_FIELDS)) {
+    const excluded = SIGNED_EXCLUDE.has(k);
+    if (excluded) ok(!(await moves(k)), `${k} (${cls}) is NOT in the content digest`);
+    else ok(await moves(k), `${k} (${cls}) IS in the content digest`);
+  }
+  for (const k of ['revisions', 'comments', 'historySalt', 'collab', 'readonly', 'template', 'signatures', 'modified'])
+    ok(SIGNED_EXCLUDE.has(k), `${k} is excluded by name, as canon.ts says`);
+  ok(await moves('undeclaredFutureField'), 'an UNDECLARED field is signed — the exclude list fails safe');
+}
+
+H('v2: the history commitment');
+{
+  const revs = [{ id: 'rev-1', at: 'x', label: 'Revision 1', body: [{ id: 'p1', kind: 'para', text: 'within 30 days' }] }];
+  const s2 = newHistorySalt();
+  ok(SALT.length === 22 && s2.length === 22 && SALT !== s2, 'a salt is 16 bytes as 22 base64url chars, and fresh each time');
+  ok(await historyCommitment(revs, SALT) !== await historyCommitment(revs, s2),
+    'the SAME revisions under two salts commit differently — the salt is what hides the drafts');
+  ok(await historyCommitment(revs, SALT) === await historyCommitment(JSON.parse(JSON.stringify(revs)), SALT),
+    'and the same revisions under the same salt commit identically');
+  // The domain tag is part of the preimage: recompute without it and compare.
+  const enc = new TextEncoder();
+  const raw = Uint8Array.from(atob(SALT.replace(/-/g, '+').replace(/_/g, '/') + '=='), c => c.charCodeAt(0));
+  const body = enc.encode(canonicalize(revs));
+  const untagged = new Uint8Array(raw.length + body.length); untagged.set(raw); untagged.set(body, raw.length);
+  const h = await crypto.subtle.digest('SHA-256', untagged);
+  const untaggedB64 = btoa(String.fromCharCode(...new Uint8Array(h))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  ok(await historyCommitment(revs, SALT) !== untaggedB64, 'the commitment is DOMAIN-TAGGED — not a bare sha256(salt||revisions)');
+  let threw = false; try { await historyCommitment(revs, 'short'); } catch { threw = true; }
+  ok(threw, 'a salt that is not 16 bytes is refused, not silently used');
+}
+
+H('v2: attestation and history are reported separately');
+{
+  const revs = [{ id: 'rev-1', at: 'x', label: 'Revision 1', body: [] }];
+  const d = doc({ revisions: revs });
+  const k = await newKey();
+  const s = await sign(d, k, { name: 'Alice' });
+  ok(typeof s.history === 'string' && s.history === await historyCommitment(revs, SALT),
+    'a v2 signature carries the commitment to the history it signed');
+  const own = await verify(d, s);
+  ok(own.ok && own.history === 'matches', 'on its own document: valid, and the history matches');
+
+  // ⋯ → Snapshot after signing: the TEXT is identical, only history moved.
+  const snapped = doc({ revisions: [...revs, { id: 'rev-2', at: 'y', label: 'Revision 2', body: [] }] });
+  const r1 = await verify(snapped, s);
+  ok(r1.ok, 'a Snapshot does NOT break the attestation — the content is what was signed');
+  ok(r1.history === 'changed', 'but the history reports CHANGED — signatures still cover it');
+
+  // A view-only copy: no revisions, no salt, read-only.
+  const reader: Record<string, unknown> = { ...d, readonly: true };
+  delete reader.revisions; delete reader.historySalt;
+  const r2 = await verify(reader as never, s);
+  ok(r2.ok && r2.history === 'not-included',
+    'a READER-tier copy verifies, and its missing history is neutral — it never carries history');
+
+  // The SAME document, EDITABLE, with the history deleted: a warning, not grey.
+  const stripped: Record<string, unknown> = { ...d };
+  delete stripped.revisions;
+  const r3 = await verify(stripped as never, s);
+  ok(r3.ok && r3.history === 'missing',
+    'an EDITABLE document that lost its revisions reports MISSING — deleting history cannot fake "neutral"');
+  const unsalted: Record<string, unknown> = { ...d }; delete unsalted.historySalt;
+  ok((await verify(unsalted as never, s)).history === 'missing', 'and so does one that lost its salt');
+
+  const forged = await verify(d, { ...s, history: await historyCommitment([], SALT) });
+  ok(!forged.ok && forged.why === 'bad-signature', 'a forged `history` field breaks the signature itself');
+  const resalted = await verify({ ...d, historySalt: newHistorySalt() }, s);
+  ok(resalted.ok && resalted.history === 'changed', 'swapping the salt reads as changed history, never as a match');
+
+  let threw = false; try { await sign({ docId: 'x', revisions: [] }, k, {}); } catch { threw = true; }
+  ok(threw, 'signing a document with no salt is refused — the caller mints it, in the document');
+}
+
+H('v2: a re-sign after trimming the history');
+{
+  const r1 = { id: 'rev-1', at: 'x', label: 'Revision 1', body: [] };
+  const r2 = { id: 'rev-2', at: 'y', label: 'Revision 2', body: [] };
+  const full = doc({ revisions: [r1, r2] });
+  const ka = await newKey(), kb = await newKey();
+  const before = await sign(full, ka, { name: 'Alice' });
+  const trimmed = doc({ revisions: [r2], signatures: [before] });
+  const after = await sign(trimmed, kb, { name: 'Bob', prev: before });
+  const res = await verifyChain(trimmed, [before, after]);
+  ok(res.entries[1].ok && res.entries[1].history === 'matches', 'the re-sign attests the TRIMMED history');
+  ok(res.entries[0].ok && res.entries[0].history === 'changed',
+    'and the pre-trim signature still attests the content but reports its history CHANGED — '
+    + 'expected after a trim, and the UI must say a trim does this');
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`);

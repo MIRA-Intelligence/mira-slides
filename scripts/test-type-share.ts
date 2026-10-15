@@ -30,7 +30,7 @@ const { emptyDoc, parseDoc, docForExport } = await import('../type/src/model.ts'
 const { mintCollab } = await import('../kernel/src/sync/online.ts')
 const { mergeDoc } = await import('../type/src/merge.ts')
 const { newThread, writeThreads } = await import('../type/src/comments.ts')
-const { sign, newKey } = await import('../type/src/canon.ts')
+const { sign, newKey, newHistorySalt, verifyChain } = await import('../type/src/canon.ts')
 const { TYPE_FIELDS, HISTORY_CLASS } = await import('../type/src/docclass.ts')
 import type { TypeDoc } from '../type/src/model.ts'
 
@@ -234,6 +234,7 @@ async function full(): Promise<{ doc: TypeDoc; ownerPriv: string }> {
   d.revisions = [{ id: 'rev1', at: '2026-10-01T00:00:00.000Z', label: 'Revision 1',
                    body: [{ id: 'p1', kind: 'para', text: DRAFT }] }]
   writeThreads(d, [newThread(d.body[0], 0, 7, 'Bob', NOTE)])
+  d.historySalt = newHistorySalt()   // the first signature mints it, in the document
   d.signatures = [await sign(d, await newKey(), { name: 'Alice', prev: null })]
   ;(d as Record<string, unknown>).futureField = FUTURE
   const r = parseDoc(JSON.stringify(d))
@@ -253,13 +254,15 @@ async function bare(): Promise<{ doc: TypeDoc; ownerPriv: string }> {
 
 const has = (o: unknown, s: string) => JSON.stringify(o).includes(s)
 const carriesHistory = (o: TypeDoc) =>
-  (o.revisions?.length ?? 0) > 0 || (o.signatures?.length ?? 0) > 0 || o.comments !== undefined
+  (o.revisions?.length ?? 0) > 0 || o.comments !== undefined || o.historySalt !== undefined
 
 H('the FULL fixture really carries everything a leak would show')
 const F = await full()
 ok(has(F.doc, DRAFT), 'the source holds a whole earlier draft in revisions')
 ok(has(F.doc, NOTE), 'the source holds an internal comment thread (it survived parseDoc)')
 ok(F.doc.signatures.length === 1, 'the source holds a real signature')
+ok(typeof F.doc.historySalt === 'string' && F.doc.historySalt.length === 22,
+   'and the history salt that signature committed under (it survived parseDoc)')
 ok(has(F.doc, FUTURE), 'the source holds a field this build does not declare')
 ok(typeof (F.doc.collab as { ownerPriv?: string }).ownerPriv === 'string', 'the source holds a real owner private key')
 
@@ -268,7 +271,18 @@ H('a VIEW-ONLY copy carries no history (tier reader)')
   const r = readerCopy(F.doc)
   ok(!has(r, DRAFT), 'no earlier draft — the wording negotiated away stays here')
   ok(!has(r, NOTE), 'no internal comment')
-  ok(!r.signatures?.length, 'no signatures: one covering history the copy lacks would read "changed" forever')
+  // Signatures travel WITH a view-only copy now (canon.ts v2): each signs the
+  // content plus a salted commitment to the history, so the copy — no drafts,
+  // no salt — verifies them. Run through the real verifyChain on the COPY.
+  ok(r.signatures?.length === 1, 'the signature travels with the view-only copy')
+  ok(!('historySalt' in r), 'but the history salt does not — without it the commitment reveals nothing')
+  {
+    const v = await verifyChain(r as never, r.signatures)
+    ok(v.ok && v.entries[0].ok && v.entries[0].why === null,
+      'and it VERIFIES on the copy: the content attested is exactly what the copy holds')
+    ok(v.entries[0].history === 'not-included',
+      'with the history reported NEUTRAL — a view-only copy never carries it')
+  }
   for (const k of HISTORY_CLASS) ok(!(k in r), `${k} is absent as a FIELD, not merely emptied`)
   ok(!has(r, FUTURE), 'an undeclared field does not ride along')
   ok(r.readonly === true, 'the copy is read-only (set by the tier, not by the source)')
@@ -287,7 +301,9 @@ H('a VIEW-ONLY copy carries no history (tier reader)')
 H('Copy document JSON carries no history and no credentials (tier copyJSON)')
 {
   const j = docForExport(F.doc)
-  ok(!has(j, DRAFT) && !has(j, NOTE) && !j.signatures?.length, 'no draft, no comment, no signature')
+  ok(!has(j, DRAFT) && !has(j, NOTE), 'no draft, no comment')
+  ok(!('historySalt' in j), 'no history salt')
+  ok(j.signatures?.length === 1, 'the signature is content now, so it travels as text too')
   ok(!('collab' in j), 'no collaboration block at all')
   ok(!has(j, FUTURE), 'no undeclared field')
   ok(j.body[0].text === F.doc.body[0].text && j.docId === F.doc.docId, 'content and identity intact')
@@ -370,8 +386,10 @@ H('an INVITE keeps history by default, and leaves it out when asked (tier invite
 H('the class map is the single source')
 {
   ok(TYPE_FIELDS.revisions === 'history' && TYPE_FIELDS.comments === 'history' &&
-     TYPE_FIELDS.signatures === 'history', 'revisions, comments and signatures are history')
-  ok([...HISTORY_CLASS].sort().join() === 'comments,revisions,signatures',
+     TYPE_FIELDS.historySalt === 'history', 'revisions, comments and the history salt are history')
+  ok(TYPE_FIELDS.signatures === 'content',
+     'signatures are content: they sign a commitment to the history, not the history')
+  ok([...HISTORY_CLASS].sort().join() === 'comments,historySalt,revisions',
     'the invite opt-out list is DERIVED from the map, not hand-listed')
 }
 
