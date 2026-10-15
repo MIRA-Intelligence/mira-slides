@@ -165,5 +165,46 @@ H('THE CRASH CASE: sign, crash before the file is written, reload')
     'a snapshot differing only in modified offers nothing — no banner on every reload')
 }
 
+H('a recovery snapshot with NO signatures never pairs its revisions with the live signatures')
+{
+  // Signatures cover content AND revisions, so a restore that took the
+  // snapshot's revisions but kept the file's signatures would show signatures
+  // over a history they never saw — every one reading "changed". The newer
+  // state is genuinely unsigned, so the right outcome is NO signatures.
+  //
+  // What makes that true in type is parseDoc DEFAULTING an absent `signatures`
+  // to [] (model.ts) before any restore logic sees the snapshot. A recovery
+  // rule that keeps the live value when a field is ABSENT would otherwise keep
+  // the file's signatures. That default is an implementation detail, so this
+  // row pins it at type's seam: break it and this goes red.
+  //
+  // Through the banner's own restore path: gateRestored, then store.replace.
+  const live = doc()
+  live.revisions = [{ id: 'r1', at: '2026-01-01T00:00:00.000Z', label: 'Revision 1',
+                      body: JSON.parse(JSON.stringify(live.body)) }]
+  live.signatures = [{ alg: 'ES256', pub: 'P', name: 'Bob', content: 'C', prev: '', sig: 'S' } as any]
+  ok(live.signatures.length === 1 && live.signatures[0].name === 'Bob',
+    'the FILE really is signed (Bob) — so "no signatures after restore" is a result, not a fixture')
+
+  // The crashed session held a NEWER revision and no signatures at all — and
+  // its JSON lacks the key entirely, not just an empty list.
+  const newer = JSON.parse(JSON.stringify(live)) as Record<string, unknown>
+  ;(newer.revisions as unknown[]).push({ id: 'r2', at: '2026-02-01T00:00:00.000Z', label: 'Revision 2',
+                                         body: JSON.parse(JSON.stringify(live.body)) })
+  delete newer.signatures
+  ok(!('signatures' in newer), 'the snapshot JSON genuinely has no signatures key')
+
+  const gated = gateRestored(JSON.stringify(newer), live)
+  ok(gated !== null, 'the snapshot passes the restore gate')
+  const store = new Store(live)
+  store.replace(gated!)
+  ok(store.doc.revisions.length === 2 && store.doc.revisions[1].id === 'r2',
+    'the restore takes the snapshot\'s revisions')
+  ok(Array.isArray(store.doc.signatures) && store.doc.signatures.length === 0,
+    'and NO signatures — the snapshot\'s unsigned state, not an absent field')
+  ok(!JSON.stringify(store.doc.signatures ?? []).includes('Bob'),
+    'the file\'s signatures are never paired with the snapshot\'s revisions')
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed`)
 if (failures) process.exit(1)
