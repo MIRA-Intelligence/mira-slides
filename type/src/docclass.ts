@@ -97,3 +97,33 @@ export type HistoryField = FieldsOfClass<typeof TYPE_FIELDS, 'history'>;
 export const HISTORY_CLASS: readonly HistoryField[] =
   (Object.keys(TYPE_FIELDS) as Array<keyof typeof TYPE_FIELDS>)
     .filter((k): k is HistoryField => TYPE_FIELDS[k] === 'history');
+
+/**
+ * A PASTED document never brings its own history: every history-class field
+ * keeps the LIVE value, and one the live document lacks is removed from the
+ * paste. For "Replace from JSON…" and its scripted twin `bento.loadDoc` only.
+ *
+ * History is this file's own log — earlier drafts, the comment threads, and
+ * (once signatures commit to it) the salt every signature's commitment is
+ * made under. A paste must not be able to forge it, swap it, or erase it.
+ * Without this, the ordinary AI round trip was destructive: Copy document JSON
+ * leaves history out (the copy table's 'copyJSON' tier), so pasting the result
+ * straight back defaulted every history field to empty and silently deleted
+ * the document's revisions and comments.
+ *
+ * Same rule as bento/spaces' keepLiveHistory, deliberately — but NOT applied to
+ * every whole-document replace as spaces does: type's crash recovery restores a
+ * NEWER copy of this same document, and there the snapshot's history is the
+ * newer one and is meant to come back (scripts/test-type-autosave.ts).
+ *
+ * Read from the map, so a history field classified later is kept the same way.
+ * Mutates and returns `next`; values are copied, never shared with `live`.
+ */
+export function keepLiveHistory<T extends object>(live: T, next: T): T {
+  const n = next as Record<string, unknown>, l = live as Record<string, unknown>;
+  for (const k of HISTORY_CLASS) {
+    if (Object.hasOwn(l, k) && l[k] !== undefined) n[k] = structuredClone(l[k]);
+    else delete n[k];
+  }
+  return next;
+}

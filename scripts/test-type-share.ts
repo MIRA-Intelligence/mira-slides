@@ -31,7 +31,8 @@ const { mintCollab } = await import('../kernel/src/sync/online.ts')
 const { mergeDoc } = await import('../type/src/merge.ts')
 const { newThread, writeThreads } = await import('../type/src/comments.ts')
 const { sign, newKey } = await import('../type/src/canon.ts')
-const { TYPE_FIELDS, HISTORY_CLASS } = await import('../type/src/docclass.ts')
+const { TYPE_FIELDS, HISTORY_CLASS, keepLiveHistory } = await import('../type/src/docclass.ts')
+const { Store } = await import('../type/src/store.ts')
 import type { TypeDoc } from '../type/src/model.ts'
 
 let checks = 0, failures = 0
@@ -373,6 +374,59 @@ H('the class map is the single source')
      TYPE_FIELDS.signatures === 'history', 'revisions, comments and signatures are history')
   ok([...HISTORY_CLASS].sort().join() === 'comments,revisions,signatures',
     'the invite opt-out list is DERIVED from the map, not hand-listed')
+}
+
+H('Replace from JSON brings CONTENT, never history')
+{
+  // Copy document JSON leaves history out (tier copyJSON), so before this rule
+  // pasting it straight back silently emptied every history field: the
+  // ordinary AI round trip deleted the document's revisions and comments.
+  // The rule (same as bento/spaces'): a paste never installs history — every
+  // history-class field keeps the LIVE value, whatever the paste carries.
+  const store = new Store(JSON.parse(JSON.stringify(F.doc)))
+  const liveRevs = JSON.stringify(store.doc.revisions)
+  const liveNotes = JSON.stringify(store.doc.comments)
+  ok(has(store.doc, DRAFT) && has(store.doc, NOTE), 'the live document has history to lose (a draft and a comment)')
+
+  // 1. the unchanged round trip
+  const pasted = parseDoc(JSON.stringify(docForExport(store.doc)))
+  ok(pasted.ok && !has(pasted.doc, DRAFT), 'the pasted Copy JSON really carries no history')
+  store.replace(keepLiveHistory(store.doc, (pasted as { doc: TypeDoc }).doc))
+  ok(JSON.stringify(store.doc.revisions) === liveRevs, 'an unchanged round trip keeps every revision')
+  ok(JSON.stringify(store.doc.comments) === liveNotes, 'and every comment thread')
+
+  // 2. a paste carrying DIFFERENT history does not install it
+  const forged = JSON.parse(JSON.stringify(docForExport(store.doc)))
+  forged.revisions = [{ id: 'evil', at: 'x', label: 'Forged', body: [{ id: 'p1', kind: 'para', text: 'FORGED-DRAFT' }] }]
+  forged.comments = { evil: { id: 'evil', text: 'FORGED-NOTE', author: 'Mallory', at: 'x', replies: [],
+                              anchor: { block: F.doc.body[0].id, from: 0, to: 3 } } }
+  forged.body[0].text = 'Payment is due within 90 days.'
+  const fp = parseDoc(JSON.stringify(forged))
+  ok(fp.ok && has(fp.doc, 'FORGED-DRAFT'), 'the forged paste really carries its own revisions')
+  store.replace(keepLiveHistory(store.doc, (fp as { doc: TypeDoc }).doc))
+  ok(!has(store.doc, 'FORGED-DRAFT') && JSON.stringify(store.doc.revisions) === liveRevs,
+    'a paste cannot install or swap revisions')
+  ok(!has(store.doc, 'FORGED-NOTE') && JSON.stringify(store.doc.comments) === liveNotes,
+    'nor comment threads')
+  ok(store.doc.body[0].text === 'Payment is due within 90 days.', 'while its CONTENT does land — that is what a paste is for')
+
+  // 3. a document with NO history: a paste carrying some does not give it any
+  const bareStore = new Store(JSON.parse(JSON.stringify((await bare()).doc)))
+  const withRevs = JSON.parse(JSON.stringify(bareStore.doc))
+  withRevs.revisions = [{ id: 'r', at: 'x', label: 'R', body: [] }]
+  const wp = parseDoc(JSON.stringify(withRevs))
+  bareStore.replace(keepLiveHistory(bareStore.doc, (wp as { doc: TypeDoc }).doc))
+  ok((bareStore.doc.revisions ?? []).length === 0, 'a document with no history gets none from a paste')
+
+  // 4. both paste paths in main.ts go through it (DOM code, so checked by source)
+  const main = readFileSync(new URL('../type/src/main.ts', import.meta.url), 'utf8')
+  const replaceBody = main.slice(main.indexOf('onReplaceDoc: json =>'), main.indexOf('onRestoreDoc:'))
+  const loadBody = main.slice(main.indexOf('loadDoc: (json: string) =>'), main.indexOf('i18n: i18nApi'))
+  ok(/store\.replace\(keepLiveHistory\(store\.doc, parsed\.doc\)\)/.test(replaceBody),
+    'Replace from JSON… replaces through keepLiveHistory')
+  ok(/store\.replace\(keepLiveHistory\(store\.doc, parsed\.doc\)\)/.test(loadBody),
+    'and so does bento.loadDoc, its scripted twin')
+  ok(!/store\.replace\(parsed\.doc\)/.test(replaceBody + loadBody), 'neither replaces with the raw paste')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)

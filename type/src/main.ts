@@ -20,6 +20,7 @@ import { startTheme, setTheme, themeChoice, type ThemeChoice } from '../../kerne
 import { parseDoc, emptyDoc, uid, wordCount, withoutEmbeddedCaps, type TypeDoc } from './model.ts';
 import { gateRestored } from './restoregate.ts';
 import { Store } from './store.ts';
+import { keepLiveHistory } from './docclass.ts';
 import { Editor } from './editor.ts';
 import { paginate, drawPages, type Metrics } from './paginate.ts';
 import { takeSnapshot, startReview } from './redlineview.ts';
@@ -232,7 +233,9 @@ const showAbout = () => openAbout({
           : t('That is not a bento/type document: {detail}', { detail: parsed.detail }));
         return;
       }
-      store.replace(parsed.doc);
+      // The paste brings content, never history: this file's revisions and
+      // comments stay as they are (docclass.ts keepLiveHistory).
+      store.replace(keepLiveHistory(store.doc, parsed.doc));
       // store.replace swaps the model; only this rebuilds the paper from it.
       // Without it the document changed and the screen did not — which is what
       // "Replace from JSON…" did on the day it was added.
@@ -1024,7 +1027,7 @@ dirty = false; paintTitle();
   loadDoc: (json: string) => {
     const parsed = parseDoc(json);
     if (!parsed.ok) throw new Error(`bento/type: ${parsed.err === 'empty' ? 'empty document' : parsed.detail}`);
-    store.replace(parsed.doc);
+    store.replace(keepLiveHistory(store.doc, parsed.doc));      // the same rule as Replace from JSON
     editor.render();
     schedule();
     return true;
