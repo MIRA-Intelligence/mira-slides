@@ -36,6 +36,165 @@ export function keepLiveIdentity(restored: Obj, live: Obj): void {
   }
 }
 
+// --- whole-document restore: undo / redo / version restore / crash recovery ---
+// The class-driven generalisation of keepLiveIdentity. keepLiveIdentity pins a
+// hard-coded identity list live; applyRestore decides PER FIELD from its class,
+// with per-field overrides, because a field's COPY class and its RESTORE
+// behaviour can diverge (type's comments are class 'history' for copy reasons
+// but must be undoable/restorable). It is additive: apps keep keepLiveIdentity
+// until they adopt this.
+
+/** How a field behaves under undo/redo and whole-document restore.
+ *  - 'follows': take the restored / incoming value, like ordinary content.
+ *  - 'live':    keep the LIVE value; the restored value is ignored. */
+export type KeepLive = 'live' | 'follows'
+
+/** Default by class: content (and an unknown field) FOLLOWS; identity,
+ *  capability, mode and history stay LIVE — a restore never rolls back identity
+ *  or modes, and history is file-local bookkeeping a version restore must not
+ *  discard. Apps override per field (type's comments → 'follows'). */
+export function defaultKeepLive(cls: FieldClass | undefined): KeepLive {
+  return cls === undefined || cls === 'content' ? 'follows' : 'live'
+}
+
+/** Which way a restore goes.
+ *  - 'back':    undo/redo and version restore — going BACK in time. A 'live'
+ *               field keeps the live value (identity and history don't roll back).
+ *  - 'recover': crash recovery — `incoming` is a NEWER copy of THIS document.
+ *               A 'live' HISTORY field is reconciled with it (a revision made
+ *               just before the crash must survive), the rest still keep live. */
+export type RestoreDirection = 'back' | 'recover'
+
+/** A per-field recover hook: given the live value, the incoming value and the
+ *  two whole-doc times, return the value to keep. Consulted ONLY for a 'live'
+ *  history field under 'recover', and ONLY when `incoming` HAS the field — a key
+ *  absent from the snapshot keeps the live value before any hook runs, so a hook
+ *  never sees `incoming === undefined`.
+ *
+ *  `at` is EPOCH MILLISECONDS on both sides, which the CALLER normalises so a
+ *  hook never compares a number against a string: `live` = the live doc's
+ *  modified time as ms (`Date.parse(doc.modified)`), `incoming` = the snapshot's
+ *  own time (already ms). Either is `undefined` when unknown — an old file with
+ *  no `modified` gives `live: undefined`, which a hook should treat as OLDER. */
+export type RecoverHook = (
+  live: unknown, incoming: unknown, at: { live?: number; incoming?: number },
+) => unknown
+
+export interface RestoreRules {
+  readonly classes: Record<string, FieldClass>
+  /** Per-field keep-live override, beside the class default (e.g. comments
+   *  'follows' though class history). */
+  readonly keepLive?: Readonly<Record<string, KeepLive>>
+  /** Per-field recover hook — used only for a 'live' history field on 'recover'.
+   *  A field with no hook follows incoming when present, keeps live when absent. */
+  readonly recover?: Readonly<Record<string, RecoverHook>>
+}
+
+/** Resolve a whole-document restore and return the doc to INSTALL.
+ *  Over the union of live + incoming keys:
+ *   - a 'follows' field takes `incoming` ('back': absent means dropped; 'recover':
+ *     an absent key never wipes a live value — a snapshot may be a projection);
+ *   - a 'live' field keeps the live value, EXCEPT a 'live' history field on
+ *     'recover', which uses its recover hook, or (no hook) follows incoming when
+ *     present and keeps live when absent.
+ *  `at` carries the whole-doc timestamps (live.modified vs the snapshot's time),
+ *  passed to recover hooks; it is not otherwise inspected here. */
+/** Keys that address an object's PROTOTYPE. A recovery snapshot is foreign input
+ *  (JSON from a shared-origin IndexedDB on file://), and `JSON.parse` gives it an
+ *  OWN `__proto__` key — then `out[k] = I[k]` would swap the restored doc's
+ *  prototype (a `readonly` getter could read true). Never processed. */
+const PROTO_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
+
+/** Classes whose keepLive is ALWAYS 'live' — a restore may never adopt a
+ *  snapshot's identity, modes or capabilities (its room, docId, lock). A
+ *  keepLive override naming one is ignored here and refused by
+ *  validateRestoreRules / restoreOverrides. */
+const FLOOR_CLASSES: ReadonlySet<FieldClass> = new Set(['identity', 'mode', 'capability'])
+
+/** Own-property read — a null-prototype class map must not fall through to
+ *  Object.prototype (where `classes['constructor']` would read a function). */
+const ownGet = <V>(o: Record<string, V> | undefined, k: string): V | undefined =>
+  o && Object.hasOwn(o, k) ? o[k] : undefined
+
+export function applyRestore<T extends object>(
+  live: T, incoming: T, direction: RestoreDirection, rules: RestoreRules,
+  at: { live?: number; incoming?: number } = {},
+): T {
+  const L = live as Obj, I = incoming as Obj
+  const out: Obj = {}
+  for (const k of new Set([...Object.keys(L), ...Object.keys(I)])) {
+    if (PROTO_KEYS.has(k)) continue // never assign a prototype key from an untrusted snapshot
+    const cls = ownGet(rules.classes, k)
+    // The floor: identity / mode / capability ALWAYS keep live; a keepLive
+    // override is honoured only for content / history / unknown.
+    const override = cls && FLOOR_CLASSES.has(cls) ? undefined : ownGet(rules.keepLive, k)
+    const kl = override ?? defaultKeepLive(cls)
+    if (kl === 'follows') {
+      if (I[k] !== undefined) out[k] = I[k]
+      else if (direction === 'recover' && L[k] !== undefined) out[k] = L[k] // absent never wipes on recover
+      continue
+    }
+    // 'live'
+    if (direction === 'recover' && cls === 'history') {
+      // A missing key keeps live BEFORE any hook runs — so absent-never-wipes
+      // does not depend on each hook remembering it, and a hook never sees an
+      // undefined incoming.
+      const hook = I[k] !== undefined ? ownGet(rules.recover, k) : undefined
+      if (hook) { const v = hook(L[k], I[k], at); if (v !== undefined) out[k] = v; continue }
+      if (I[k] !== undefined) out[k] = I[k]
+      else if (L[k] !== undefined) out[k] = L[k] // absent never wipes a history field on recover
+      continue
+    }
+    if (L[k] !== undefined) out[k] = L[k]
+  }
+  return out as T
+}
+
+/** Throw if a keepLive override names an identity / mode / capability field with
+ *  anything but 'live' — the override floor, checked once when rules are built
+ *  (the compile-time half is `restoreOverrides`). applyRestore also enforces it,
+ *  so a slipped override is SAFE, not merely caught. */
+export function validateRestoreRules(rules: RestoreRules): void {
+  const kl = rules.keepLive
+  if (!kl) return
+  for (const k of Object.keys(kl)) {
+    if (PROTO_KEYS.has(k)) continue
+    const cls = ownGet(rules.classes, k)
+    if (cls && FLOOR_CLASSES.has(cls) && ownGet(kl, k) !== 'live') {
+      throw new Error(`keepLive override for "${k}" (class ${cls}) must be 'live' — identity, mode and capability fields never follow a restore`)
+    }
+  }
+}
+
+/** Build a keepLive override map with a COMPILE-TIME guarantee that only content
+ *  or history fields are named — naming an identity / mode / capability field is
+ *  a type error (the override floor's compile half; applyRestore and
+ *  validateRestoreRules enforce it at runtime). */
+export function restoreOverrides<M extends Record<string, FieldClass>>(
+  _classes: M,
+  overrides: Partial<Record<FieldsOfClass<M, 'content'> | FieldsOfClass<M, 'history'>, KeepLive>>,
+): Record<string, KeepLive> {
+  return overrides as Record<string, KeepLive>
+}
+
+/** A recover hook for a revision-style list: keep whichever whole list holds the
+ *  most recent entry (by its `at`), ties to LIVE; the lists are NEVER merged, so
+ *  a signer's trim survives. OPTIONAL and for an UNSIGNED list only — a SIGNED
+ *  list must use the default (follow incoming), because a tie can otherwise pair
+ *  a signature with history it never signed (bento/type's finding). */
+export const newestListWins: RecoverHook = (live, incoming) => {
+  const newest = (x: unknown): string =>
+    Array.isArray(x) ? x.reduce<string>((m, e) => {
+      const a = (e as { at?: unknown })?.at
+      return typeof a === 'string' && a > m ? a : m
+    }, '') : ''
+  const lv = Array.isArray(live) ? live : undefined
+  const iv = Array.isArray(incoming) ? incoming : undefined
+  if (!iv) return lv
+  if (!lv) return iv
+  return newest(iv) > newest(lv) ? iv : lv // tie → live
+}
+
 // --- capabilities / secrets (stripped on export) ----------------------------
 
 /** Top-level fields that carry a write/owner capability or secret. A copy that
@@ -325,7 +484,15 @@ export const DEFAULT_NOT_EDIT: ReadonlySet<string> = new Set(['modified', 'previ
 
 /** A stable key over the fields that count as unsaved work, for crash-recovery
  *  comparison. ABSENT fields never change the key (skipped, never null-padded),
- *  so a document without a newer field keys identically on an older build. */
+ *  so a document without a newer field keys identically on an older build.
+ *
+ *  THE RULE for what counts: a field an app writes only at SAVE TIME belongs in
+ *  its notEdit set; anything written while EDITING counts. History counts by
+ *  default (a revision made or a trail row recorded mid-edit is unsaved work and
+ *  must survive a crash); an app exempts only what it writes at save time (e.g.
+ *  a revisions list appended in the save queue → notEdit), or a reopened
+ *  download-save shows a phantom recovery banner. Fail-safe: a missed exemption
+ *  costs a spurious banner, a wrong default costs data. */
 export function docContentKey(
   doc: object, classes: Record<string, FieldClass>, notEdit: ReadonlySet<string> = DEFAULT_NOT_EDIT,
 ): string {

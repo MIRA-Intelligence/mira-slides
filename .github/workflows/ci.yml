@@ -118,6 +118,14 @@ jobs:
       - name: Field-classification rig
         run: node scripts/test-field-class.ts
 
+      - name: Whole-document restore rig (undo / version restore / crash recovery)
+        # applyRestore decides per field from its class, with per-field overrides,
+        # and the restore DIRECTION matters: a version restore ('back') keeps a
+        # live field; crash recovery ('recover') reconciles a live history field
+        # with the newer snapshot. Recover hooks (newestListWins for unsigned
+        # lists) vs the default (signed-safe). Absent never wipes on recover.
+        run: node scripts/test-restore.ts
+
       - name: Typecheck convert (standalone)
         # convert/ is a library beside the apps (the CLI and bento.page/import
         # use it; no shell does), so no app's tsc -b reaches it. Its own flags,

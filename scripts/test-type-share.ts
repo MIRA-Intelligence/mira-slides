@@ -295,7 +295,7 @@ H('Copy document JSON carries no history and no credentials (tier copyJSON)')
   ok(!carriesHistory(docForExport(B.doc)), 'BARE: invents no history')
 }
 
-H('mail merge: every letter is a new document with no history (copyJSON + a fresh identity)')
+H('mail merge: every letter is a new document with no history (the \'merge\' tier + a fresh identity)')
 {
   const a = mergeDoc(F.doc, { Name: 'Ada' }, ['Name'], 'list.bento.html')
   const b = mergeDoc(F.doc, { Name: 'Grace' }, ['Name'], 'list.bento.html')
@@ -308,6 +308,43 @@ H('mail merge: every letter is a new document with no history (copyJSON + a fres
   }
   const B = await bare()
   ok(!carriesHistory(mergeDoc(B.doc, { Name: 'X' }, ['Name'], 's')), 'BARE: invents no history')
+
+  // N letters, N identities. Each is minted in the builder after the tier's
+  // identity reset, so each is distinct from the moment it is written and none
+  // is the template's — two letters sharing one docId would be two files
+  // autosave believes are the same document.
+  const N = 7
+  const ids = Array.from({ length: N }, (_, i) => mergeDoc(F.doc, { Name: `R${i}` }, ['Name'], 's').docId)
+  ok(new Set(ids).size === N, `${N} letters have ${N} distinct docIds`)
+  ok(!ids.includes(F.doc.docId), 'and none of them is the source document\'s')
+  ok(ids.every(id => typeof id === 'string' && id.length > 0), 'every letter HAS an identity — the reset was followed by a mint')
+  const m0 = mergeDoc(F.doc, { Name: 'Z' }, ['Name'], 's')
+  ok(m0.readonly === undefined && m0.template === undefined, 'a letter is neither locked nor a template (both modes dropped)')
+  ok(m0.merge?.row?.Name === 'Z', 'and still records the row it was merged from')
+}
+
+H('mail merge: an EMBEDDED document\'s keys never reach a letter')
+{
+  // Built RAW, not through parseDoc: parseDoc already strips an embed's keys on
+  // intake, so a parsed fixture would carry none and every check below would
+  // pass for free. A document held in memory is not guaranteed to have come
+  // through parseDoc, and projectForCopy works on top-level fields only — it
+  // does not walk into an embed. mergeDoc's pre-strip is what covers this.
+  const src = { ...emptyDoc(), title: 'Letter' } as TypeDoc
+  src.body = [
+    { id: 'p1', kind: 'para', text: 'See the attached figures.' },
+    { id: 'e1', kind: 'embed', text: '',
+      embed: { app: 'bento/dash', view: '<svg/>',
+               doc: { format: 'bento/dash', title: 'Q3',
+                      collab: { room: 'w-embed', key: 'EMBED-READ-CAP', ownerPriv: 'EMBED-OWNER-PRIV' } } } } as never,
+  ]
+  ok(has(src, 'EMBED-OWNER-PRIV') && has(src, 'EMBED-READ-CAP'),
+    'the SOURCE really carries an embedded document\'s owner key and read cap')
+  const letter = mergeDoc(src, { Name: 'Ada' }, ['Name'], 's')
+  ok(!has(letter, 'EMBED-OWNER-PRIV'), 'the letter carries no embedded owner key')
+  ok(!has(letter, 'EMBED-READ-CAP'), 'and no embedded read capability')
+  ok(has(letter, 'Q3') && letter.body.some(b => b.kind === 'embed'),
+    'while the embed itself — its content — is still in the letter')
 }
 
 H('an INVITE keeps history by default, and leaves it out when asked (tier invite)')
