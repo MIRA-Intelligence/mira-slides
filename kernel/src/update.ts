@@ -212,6 +212,8 @@ export async function checkForUpdates(manifestUrl?: string): Promise<UpdateCheck
   // downgrade/DoS/steer). Dev works from localhost or a real origin.
   const devOverride = sharedStorageOrigin() ? null : lsGet('bento-update-url')
   const url = manifestUrl ?? devOverride ?? updateManifestUrl()
+  // An app configured without a release channel never checks (MIRA fork).
+  if (!url) return { status: 'current', version: APP_VERSION }
   try {
     const res = await netFetch(url, { cache: 'no-store' })
     if (!res.ok) throw new Error(`release server answered ${res.status}`)
