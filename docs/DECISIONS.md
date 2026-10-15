@@ -10296,3 +10296,53 @@ peer could have planted it over the wire while the field was still unknown-and-
 applied. The new build stops syncing it, but the value already in the file is
 not evidence of anything; validate or discard it on adoption rather than trust
 it because it is "already there".
+
+
+## 2026-10-15 — bento/type binds its field classes to sync; comments and signatures still sync
+
+bento/type's sync shape (`type/src/sync/crdt.ts` `TYPE_SHAPE`) now binds the
+field-class map (`type/src/docclass.ts`). Doc-level keys therefore sync by the
+kernel's allowlist: only content keys, `maps`, and the history keys named in
+`syncHistory` are emitted. An undeclared key is applied but never re-emitted.
+
+Two history keys are named, `comments` and `signatures`. They sync as whole
+registers, exactly as before binding.
+
+- **`comments`** — a maintainer ruling (2026-10-15): comments sync live to
+  everyone in the room, readers included. Keeping them a whole `comments`
+  register makes the wire byte-identical to 1.2.7's, so a room mixing builds
+  converges. Moving them into `maps` for per-thread merging is NOT
+  mixed-version safe: a 1.2.7 peer writes the per-key ops as literal top-level
+  `comments.<id>` keys and loses the threads. That needs its own version-gated
+  migration, if it is ever wanted.
+- **`signatures`** — not a ruling. It preserves today's behaviour. Signatures
+  are classed 'history' only as an interim: they are dropped from view-only
+  copies until signing commits to the history rather than containing it (the
+  maintainer's 2026-10-15 ruling (3), which makes them content again). Before
+  binding they synced like any other key, and binding with `comments` alone
+  would silently have stopped a signature reaching the other people in the
+  room. When they return to 'content', `historySyncKeys` rejects them in
+  `syncHistory` AT COMPILE TIME, so that change is forced to remove them.
+
+`revisions` never syncs. Each replica keeps its own timeline, and it is in
+`skipDoc`.
+
+The 2026-10-11 residual (a key newly protected after being unknown-and-applied
+must have its existing value treated as untrusted) does not arise here. Every
+non-content type field is either in `skipDoc` and never synced (identity,
+modes, capability, revisions) or still named in `syncHistory`. Binding protects
+no field that synced before.
+
+Verified in `scripts/test-sync-type.ts`, against type's engine and a peer built
+from 1.2.7's exact shape:
+- comments and signatures are emitted, revisions and an undeclared key are not;
+- comments cross both ways between the two builds as one register;
+- the bound peer's silence on an undeclared key is not a delete.
+
+Mutations, all red by exit code:
+- unbinding the map;
+- dropping either key from `syncHistory`;
+- moving comments into `maps`.
+
+Naming a content key, an identity key, or a misspelled key in `syncHistory`
+fails tsc.
