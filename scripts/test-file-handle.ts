@@ -237,6 +237,18 @@ const settle = () => new Promise((r) => setTimeout(r, 10))
   ok(/void persistHandle\(doc, handle\)/.test(body) && /void persistHandle\(doc, fileHandle\)/.test(body),
     'saveFile persists the handle on both the picked and the reconnected/adopted save')
   ok(/instanceof FileSystemFileHandle/.test(src), 'only a real FileSystemFileHandle is stored (host polyfill skipped)')
+  // "Save a copy…" keeps the open deck on the ORIGINAL (maintainer ruling
+  // 2026-10-15): the copy path writes the file but must NOT retarget fileHandle
+  // or persist the copy as the doc's handle — only a first in-place save does.
+  // Asserted at source like the ordering above (the write path needs a DOM).
+  {
+    const copyRet = body.indexOf("if (isCopy) return 'copied'")
+    const setHandle = body.indexOf('fileHandle = handle')
+    const persistPicked = body.indexOf('void persistHandle(doc, handle)')
+    ok(copyRet > 0, 'the copy path returns early with \'copied\'')
+    ok(setHandle > copyRet && persistPicked > copyRet,
+      'fileHandle = handle and persistHandle(doc, handle) run ONLY after the isCopy early-return — never for a copy')
+  }
 }
 
 // --- embeddedDocBlock: the string-level #bento-doc extractor ------------------

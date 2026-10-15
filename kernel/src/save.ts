@@ -525,7 +525,7 @@ export function suggestedFileName(doc: KernelDoc, suffix = ''): string {
 
 // --- writing to disk --------------------------------------------------------
 
-type SaveResult = 'saved' | 'saved-as' | 'downloaded' | 'cancelled'
+type SaveResult = 'saved' | 'saved-as' | 'copied' | 'downloaded' | 'cancelled'
 
 interface FsFileHandle {
   createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }>
@@ -812,10 +812,17 @@ export async function saveFile(doc: KernelDoc, forcePicker = false): Promise<Sav
     if (forcePicker || !fileHandle) {
       // forcePicker is only ever "Save a copy…"; a first save of an unsaved
       // document is in-place by intent even though it must also pick.
-      const handle = await pickHandle(doc, '', undefined, forcePicker ? 'copy' : 'in-place')
+      const isCopy = forcePicker
+      const handle = await pickHandle(doc, '', undefined, isCopy ? 'copy' : 'in-place')
       if (!handle) return 'cancelled'
-      fileHandle = handle
       await writeHandle(handle, html)
+      // "Save a copy…" keeps the open deck on the ORIGINAL (maintainer ruling,
+      // 2026-10-15): the copy is written, but the editor's handle stays with the
+      // original and the copy is NOT remembered as this doc's handle — so the
+      // next ⌘S still targets the original and reopening it still reconnects.
+      // Only a first in-place save retargets onto the file it just created.
+      if (isCopy) return 'copied'
+      fileHandle = handle
       void persistHandle(doc, handle)
       return 'saved-as'
     }
