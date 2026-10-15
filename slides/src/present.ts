@@ -20,7 +20,7 @@ import type { ShowEvent, ShowVerbs } from '../../kernel/src/sync/session.ts'
 import { FollowState, laserDue } from './follow'
 import { StepState, stepOf, shownAt } from './steps'
 import { offlineEnabled } from './update'
-import { readNumber, writeNumber } from './countnumber'
+import { countPlan } from './countnumber'
 
 const MORPH_DURATION_DEFAULT = 0.65
 /** Set per-deck by doc.present.morphSeconds; clamped to something sane. */
@@ -1727,29 +1727,16 @@ function settleGuarantee(pairs: Array<[HTMLElement, SlideElement]>) {
 /** Animate every number in the element's text from 0 to its final value. */
 function runCountUp(node: HTMLElement) {
   const inner = node.querySelector<HTMLElement>('.bento-text-inner') ?? node
-  const final = inner.textContent ?? ''
-  // Separators only count BETWEEN digits, so a sentence ending in a number
-  // ("grew 25.") keeps its full stop instead of having it swallowed and
-  // re-emitted as part of the value.
-  const tokens = [...final.matchAll(/\d+(?:[.,]\d+)*/g)]
-  if (!tokens.length) return
-  const shapes = tokens.map((m) => readNumber(m[0]))
+  // what animates and what stays as authored: countnumber.ts countPlan
+  const plan = countPlan(inner.textContent ?? '')
+  if (!plan) return
   const state = { p: 0 }
   anim.to(state, {
     p: 1,
     duration: 1.15,
     delay: 0.15,
     ease: 'power2.out',
-    onUpdate() {
-      let out = ''
-      let last = 0
-      tokens.forEach((m, i) => {
-        out += final.slice(last, m.index)
-        out += writeNumber(shapes[i].value * state.p, shapes[i])
-        last = m.index! + m[0].length
-      })
-      inner.textContent = out + final.slice(last)
-    },
+    onUpdate() { inner.textContent = plan(state.p) },
   })
 }
 

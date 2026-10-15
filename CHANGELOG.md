@@ -11,6 +11,13 @@ pre-1.0.
 
 ## [Unreleased]
 
+- **Count-up leaves versions and addresses alone.** On a text box that counts
+  up, a run of digits that isn't a number — a version like `1.2.3`, an address
+  like `192.168.1.1` — used to be animated too and settle rewritten (`1.2.3`
+  became `12.3`). It now stays exactly as typed while the real numbers beside
+  it count up. As before, `12.500` counts as twelve point five and
+  `1.250.000` as one million two hundred and fifty thousand (#584).
+
 - **Indent and outdent bullets.** While editing text, Tab moves the bullet
   under the caret one level deeper, beneath the one above it, and Shift+Tab
   moves it back up; select several lines to move them together. This works on

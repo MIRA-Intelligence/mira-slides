@@ -75,3 +75,52 @@ export function writeNumber(value: number, shape: NumberShape): string {
   if (shape.group) whole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, shape.group)
   return frac ? whole + shape.point + frac : whole
 }
+
+/**
+ * Is this digit run a NUMBER the count-up may animate? Only the shapes
+ * readNumber defines: plain digits, a single separator (a decimal point, or a
+ * comma read either way), a well-formed group pattern (`1,234,567`,
+ * `1.250.000`), or both separators with everything before the last one a
+ * well-formed group (`1.234,5`, `1,234.5`). Anything else — a version
+ * `1.2.3`, an address `192.168.1.1`, `1,2,3` — is not a number, and is left
+ * exactly as the author typed it: animating it would rewrite it (`1.2.3`
+ * settled as `12.3`).
+ */
+export function isCountable(raw: string): boolean {
+  const dots = (raw.match(/\./g) ?? []).length
+  const commas = (raw.match(/,/g) ?? []).length
+  if (dots && commas) {
+    const point = raw.lastIndexOf('.') > raw.lastIndexOf(',') ? '.' : ','
+    const group = point === '.' ? ',' : '.'
+    const cut = raw.lastIndexOf(point)
+    return raw.indexOf(point) === cut && new RegExp(`^\\d{1,3}(\\${group}\\d{3})*$`).test(raw.slice(0, cut))
+  }
+  const n = dots || commas
+  if (n <= 1) return true
+  return new RegExp(`^\\d{1,3}(\\${dots ? '.' : ','}\\d{3})+$`).test(raw)
+}
+
+/**
+ * The count-up for one element's text: a function from progress (0…1) to
+ * the text at that moment, or null when there is nothing to count. Every
+ * countable number runs from 0 to its value in the author's own convention;
+ * every other digit run, and every character between, stays as authored.
+ */
+export function countPlan(final: string): ((p: number) => string) | null {
+  // Separators only count BETWEEN digits, so a sentence ending in a number
+  // ("grew 25.") keeps its full stop instead of having it swallowed and
+  // re-emitted as part of the value.
+  const tokens = [...final.matchAll(/\d+(?:[.,]\d+)*/g)]
+  const shapes = tokens.map((m) => (isCountable(m[0]) ? readNumber(m[0]) : null))
+  if (!shapes.some(Boolean)) return null
+  return (p) => {
+    let out = ''
+    let last = 0
+    tokens.forEach((m, i) => {
+      const s = shapes[i]
+      out += final.slice(last, m.index) + (s ? writeNumber(s.value * p, s) : m[0])
+      last = m.index! + m[0].length
+    })
+    return out + final.slice(last)
+  }
+}

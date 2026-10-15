@@ -53,12 +53,27 @@ console.log('\nthe comma conventions (#171) and mixed separators\n')
   ok(readNumber('1,234.5').value === 1234.5 && frame('1,234.5', 1) === '1,234.5', '1,234.5: likewise')
 }
 
+console.log('\nwhat is not a number stays as authored\n')
+{
+  const { countPlan, isCountable } = await import('../slides/src/countnumber.ts')
+  for (const raw of ['1.2.3', '192.168.1.1', '1,2,3', '1.2,3.4']) ok(!isCountable(raw), `"${raw}" is not a countable number`)
+  for (const raw of ['42', '12.500', '1.250.000', '1,234,567', '1,5', '1.234,5', '1,234.5']) ok(isCountable(raw), `"${raw}" is`)
+  const v = countPlan('Release 1.2.3 shipped to 1.250.000 users')!
+  ok(v(0.5) === 'Release 1.2.3 shipped to 625.000 users' && v(1) === 'Release 1.2.3 shipped to 1.250.000 users',
+    `a version beside a number: only the number counts (${v(0.5)})`)
+  const ip = countPlan('Server 192.168.1.1 handled 12.500 requests')!
+  ok(ip(1) === 'Server 192.168.1.1 handled 12.500 requests' && ip(0.5).startsWith('Server 192.168.1.1 handled '),
+    `an address stays exactly as typed (${ip(0.5)})`)
+  ok(countPlan('Version 1.2.3') === null && countPlan('No digits here') === null, 'text with nothing countable is not animated at all')
+  ok(countPlan('grew 25.')!(1) === 'grew 25.', 'a sentence-ending full stop is kept')
+}
+
 console.log('\nthe count-up uses this code\n')
 {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(new URL('../slides/src/present.ts', import.meta.url), 'utf8')
-  ok(/import \{ readNumber, writeNumber \} from '\.\/countnumber'/.test(src) && !/function (readNumber|writeNumber)\(/.test(src),
-    'present.ts takes readNumber/writeNumber from countnumber.ts and keeps no copy of its own')
+  ok(/import \{ countPlan \} from '\.\/countnumber'/.test(src) && /const plan = countPlan\(/.test(src) && !/function (readNumber|writeNumber|countPlan)\(/.test(src),
+    'present.ts runs its count-up through countnumber.ts countPlan and keeps no copy of its own')
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`)
