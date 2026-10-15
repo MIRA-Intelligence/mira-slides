@@ -66,10 +66,18 @@ export function defaultKeepLive(cls: FieldClass | undefined): KeepLive {
 export type RestoreDirection = 'back' | 'recover'
 
 /** A per-field recover hook: given the live value, the incoming value and the
- *  two whole-doc timestamps, return the value to keep. Consulted ONLY for a
- *  'live' history field under direction 'recover'. */
+ *  two whole-doc times, return the value to keep. Consulted ONLY for a 'live'
+ *  history field under 'recover', and ONLY when `incoming` HAS the field — a key
+ *  absent from the snapshot keeps the live value before any hook runs, so a hook
+ *  never sees `incoming === undefined`.
+ *
+ *  `at` is EPOCH MILLISECONDS on both sides, which the CALLER normalises so a
+ *  hook never compares a number against a string: `live` = the live doc's
+ *  modified time as ms (`Date.parse(doc.modified)`), `incoming` = the snapshot's
+ *  own time (already ms). Either is `undefined` when unknown — an old file with
+ *  no `modified` gives `live: undefined`, which a hook should treat as OLDER. */
 export type RecoverHook = (
-  live: unknown, incoming: unknown, at: { live?: string; incoming?: string },
+  live: unknown, incoming: unknown, at: { live?: number; incoming?: number },
 ) => unknown
 
 export interface RestoreRules {
@@ -91,15 +99,36 @@ export interface RestoreRules {
  *     present and keeps live when absent.
  *  `at` carries the whole-doc timestamps (live.modified vs the snapshot's time),
  *  passed to recover hooks; it is not otherwise inspected here. */
+/** Keys that address an object's PROTOTYPE. A recovery snapshot is foreign input
+ *  (JSON from a shared-origin IndexedDB on file://), and `JSON.parse` gives it an
+ *  OWN `__proto__` key — then `out[k] = I[k]` would swap the restored doc's
+ *  prototype (a `readonly` getter could read true). Never processed. */
+const PROTO_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype'])
+
+/** Classes whose keepLive is ALWAYS 'live' — a restore may never adopt a
+ *  snapshot's identity, modes or capabilities (its room, docId, lock). A
+ *  keepLive override naming one is ignored here and refused by
+ *  validateRestoreRules / restoreOverrides. */
+const FLOOR_CLASSES: ReadonlySet<FieldClass> = new Set(['identity', 'mode', 'capability'])
+
+/** Own-property read — a null-prototype class map must not fall through to
+ *  Object.prototype (where `classes['constructor']` would read a function). */
+const ownGet = <V>(o: Record<string, V> | undefined, k: string): V | undefined =>
+  o && Object.hasOwn(o, k) ? o[k] : undefined
+
 export function applyRestore<T extends object>(
   live: T, incoming: T, direction: RestoreDirection, rules: RestoreRules,
-  at: { live?: string; incoming?: string } = {},
+  at: { live?: number; incoming?: number } = {},
 ): T {
   const L = live as Obj, I = incoming as Obj
   const out: Obj = {}
   for (const k of new Set([...Object.keys(L), ...Object.keys(I)])) {
-    const cls = rules.classes[k]
-    const kl = rules.keepLive?.[k] ?? defaultKeepLive(cls)
+    if (PROTO_KEYS.has(k)) continue // never assign a prototype key from an untrusted snapshot
+    const cls = ownGet(rules.classes, k)
+    // The floor: identity / mode / capability ALWAYS keep live; a keepLive
+    // override is honoured only for content / history / unknown.
+    const override = cls && FLOOR_CLASSES.has(cls) ? undefined : ownGet(rules.keepLive, k)
+    const kl = override ?? defaultKeepLive(cls)
     if (kl === 'follows') {
       if (I[k] !== undefined) out[k] = I[k]
       else if (direction === 'recover' && L[k] !== undefined) out[k] = L[k] // absent never wipes on recover
@@ -107,7 +136,10 @@ export function applyRestore<T extends object>(
     }
     // 'live'
     if (direction === 'recover' && cls === 'history') {
-      const hook = rules.recover?.[k]
+      // A missing key keeps live BEFORE any hook runs — so absent-never-wipes
+      // does not depend on each hook remembering it, and a hook never sees an
+      // undefined incoming.
+      const hook = I[k] !== undefined ? ownGet(rules.recover, k) : undefined
       if (hook) { const v = hook(L[k], I[k], at); if (v !== undefined) out[k] = v; continue }
       if (I[k] !== undefined) out[k] = I[k]
       else if (L[k] !== undefined) out[k] = L[k] // absent never wipes a history field on recover
@@ -116,6 +148,33 @@ export function applyRestore<T extends object>(
     if (L[k] !== undefined) out[k] = L[k]
   }
   return out as T
+}
+
+/** Throw if a keepLive override names an identity / mode / capability field with
+ *  anything but 'live' — the override floor, checked once when rules are built
+ *  (the compile-time half is `restoreOverrides`). applyRestore also enforces it,
+ *  so a slipped override is SAFE, not merely caught. */
+export function validateRestoreRules(rules: RestoreRules): void {
+  const kl = rules.keepLive
+  if (!kl) return
+  for (const k of Object.keys(kl)) {
+    if (PROTO_KEYS.has(k)) continue
+    const cls = ownGet(rules.classes, k)
+    if (cls && FLOOR_CLASSES.has(cls) && ownGet(kl, k) !== 'live') {
+      throw new Error(`keepLive override for "${k}" (class ${cls}) must be 'live' — identity, mode and capability fields never follow a restore`)
+    }
+  }
+}
+
+/** Build a keepLive override map with a COMPILE-TIME guarantee that only content
+ *  or history fields are named — naming an identity / mode / capability field is
+ *  a type error (the override floor's compile half; applyRestore and
+ *  validateRestoreRules enforce it at runtime). */
+export function restoreOverrides<M extends Record<string, FieldClass>>(
+  _classes: M,
+  overrides: Partial<Record<FieldsOfClass<M, 'content'> | FieldsOfClass<M, 'history'>, KeepLive>>,
+): Record<string, KeepLive> {
+  return overrides as Record<string, KeepLive>
 }
 
 /** A recover hook for a revision-style list: keep whichever whole list holds the
